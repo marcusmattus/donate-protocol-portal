@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_CLUSTER=devnet
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=donate
+      - POSTGRES_PASSWORD=donate
+      - POSTGRES_DB=donate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  telegram-bot:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm tsx services/telegram-bot/index.ts"
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN:-demo-token}
+    depends_on:
+      - web
+
+  mcp-server:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm tsx services/mcp-server/index.ts"
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres-data:

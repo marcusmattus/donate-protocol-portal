@@ -43,16 +43,22 @@ export function NavDark() {
           className="hidden md:flex gap-6 text-xs uppercase tracking-widest text-slate-400"
         >
           <Link href="/" className="hover:text-teal-400 transition-colors">
-            Infrastructure
+            Home
+          </Link>
+          <Link href="/dashboard" className="hover:text-teal-400 transition-colors">
+            Dashboard
           </Link>
           <Link href="/marketplace" className="hover:text-teal-400 transition-colors">
             Marketplace
+          </Link>
+          <Link href="/strategies" className="hover:text-teal-400 transition-colors">
+            Strategies
           </Link>
           <Link href="/transparency" className="hover:text-teal-400 transition-colors">
             Security
           </Link>
           <Link href="/partner" className="hover:text-teal-400 transition-colors">
-            Partners
+            Onboard Charity
           </Link>
         </div>
       </div>
@@ -63,14 +69,14 @@ export function NavDark() {
           className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-900 border border-slate-800 text-[10px]"
         >
           <span className="w-2 h-2 rounded-full bg-lime-500 animate-pulse" />
-          SOL MAINNET: $182.44
+          SOL DEVNET: $182.44
         </div>
         <Link
-          href="/auth"
+          href="/connect"
           style={{ fontFamily: "var(--font-jetbrains), monospace" }}
           className="px-4 py-1.5 border border-teal-500 text-teal-400 text-xs uppercase tracking-tighter transition-all glass-panel hover:bg-teal-500/10"
         >
-          Initialize_Auth
+          Connect_Wallet
         </Link>
       </div>
     </nav>

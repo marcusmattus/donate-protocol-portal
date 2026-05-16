@@ -1,35 +1,75 @@
-# v0-unified-donate-protocol-portal
+# Donate Protocol — Solana Demo
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+A Solana-native demo of an agentic trading + automated giving protocol:
 
-## Built with v0
+> Trading activity creates automated impact. Users trade, copy strategies, automate execution, and route value into charities through Solana infrastructure.
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
-
-[Continue working on v0 →](https://v0.app/chat/projects/prj_2JM7b3pTeKM3z1U1UXLHzAAzcxvp)
-
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+```
+TradingView Signal → OpenClaw Agent → Risk Engine → Simulated Solana Trade
+  → Profit Event → Donation Trigger → Charity Marketplace → Impact Dashboard
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Every flow in this repo is wired end-to-end with realistic dummy data. No real
+funds move; all Solana interactions are simulated against devnet semantics.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quick start
 
-## Learn More
+```bash
+pnpm install
+pnpm dev
+# http://localhost:3000
+```
 
-To learn more, take a look at the following resources:
+Optional full stack:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+```bash
+docker compose up
+```
 
-<a href="https://v0.app/chat/api/kiro/clone/marcusmattus/v0-unified-donate-protocol-portal" alt="Open in Kiro"><img src="https://pdgvvgmkdvyeydso.public.blob.vercel-storage.com/open%20in%20kiro.svg?sanitize=true" /></a>
+See [`docs/DEMO_WALKTHROUGH.md`](docs/DEMO_WALKTHROUGH.md) for the 6-minute demo
+script.
+
+## Surface area
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Hero / homepage |
+| `/connect` → `/connect/tradingview` → `/connect/openclaw` | Wallet + signal + agent onboarding |
+| `/dashboard` | Operator overview |
+| `/dashboard/signals` | Live signal feed + signal injector |
+| `/dashboard/strategies` | Copy-trading strategy marketplace |
+| `/dashboard/portfolio` | SPL balances + receipts |
+| `/dashboard/donations` | Donation impact dashboard |
+| `/dashboard/leaderboard` | Top traders, strategies, charities |
+| `/dashboard/settings` | Donation routing + Telegram link |
+| `/marketplace` | Charity marketplace |
+| `/marketplace/[id]` | Charity profile |
+| `/onboard` … `/onboard/dashboard` | 7-step charity onboarding |
+
+## API
+
+- `POST /api/webhooks/tradingview/:token` — TradingView webhook ingestion
+- `POST /api/openclaw/run` — Full agent pipeline simulation
+- `GET /api/charities`, `/api/charities/:id`
+- `GET /api/strategies`, `/api/signals`, `/api/donations`
+
+## Solana program
+
+`programs/donate_protocol` — Anchor program with:
+
+- `DonationVault` PDA (vault_id, donation_bps, strategy_id, total_volume)
+- `StrategyVault` PDA (strategy_owner, followers, pnl)
+- `CharityRegistry` PDA (charity_wallet, category, verified, total_received)
+- `record_trade_and_donate` instruction emits `DonationEvent`
+
+Configured for Solana **devnet** in `Anchor.toml`.
+
+## Services
+
+- `services/telegram-bot/` — Telegram bot with `/start /portfolio /pnl /signals /donations /charities /leaderboard`
+- `services/mcp-server/` — MCP server exposing Donate Protocol tools to OpenClaw or any MCP-compatible agent
+
+## Stack
+
+Next.js 16 · React 19 · Tailwind v4 · shadcn/ui · Solana devnet (Anchor) ·
+Jupiter (mock) · Helius RPC · Telegram Bot API · MCP · Docker.
