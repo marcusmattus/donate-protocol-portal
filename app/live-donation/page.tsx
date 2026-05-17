@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
+import { usePrivy } from "@privy-io/react-auth"
+import { PrivyLoginButton } from "@/components/privy-login-button"
 import { PublicKey } from "@solana/web3.js"
 import {
   sendDonationTransaction,
@@ -16,6 +18,7 @@ import Link from "next/link"
 export default function LiveDonationPage() {
   const { connection } = useConnection()
   const { publicKey, signTransaction } = useWallet()
+  const { user, authenticated } = usePrivy()
   const [selectedCharity, setSelectedCharity] = useState<string>("solar-future")
   const [amountSol, setAmountSol] = useState<number>(0.1)
   const [loading, setLoading] = useState(false)
@@ -149,6 +152,12 @@ export default function LiveDonationPage() {
             </span>
           </div>
           <div className="flex items-center gap-4">
+            {authenticated && user?.wallet?.address && (
+              <div className="text-[10px] uppercase text-slate-400">
+                Privy: {user.wallet.address.slice(0, 6)}...{user.wallet.address.slice(-4)}
+              </div>
+            )}
+            <PrivyLoginButton />
             <Link
               href="/"
               className="text-[10px] uppercase tracking-widest text-slate-400 hover:text-teal-400 transition"
@@ -186,9 +195,17 @@ export default function LiveDonationPage() {
               {/* Wallet Connection */}
               <div className="mb-6 p-4 bg-slate-900/50 rounded border border-slate-800">
                 <div className="text-[10px] uppercase text-slate-500 mb-3">
-                  Step 1: Connect Wallet
+                  Step 1: Connect Wallet (Solana Adapter)
                 </div>
                 <WalletMultiButton />
+              </div>
+
+              {/* Privy Connection Option */}
+              <div className="mb-6 p-4 bg-slate-900/50 rounded border border-slate-800">
+                <div className="text-[10px] uppercase text-slate-500 mb-3">
+                  OR Step 1: Connect via Privy
+                </div>
+                <PrivyLoginButton />
               </div>
 
               {publicKey && (

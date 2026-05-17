@@ -107,18 +107,18 @@ export default function Home() {
 
               <div className="flex flex-wrap gap-4 pt-4">
                 <Link
-                  href="/auth"
+                  href="/dashboard"
                   className="px-8 py-4 bg-teal-400 text-slate-950 font-bold uppercase tracking-widest hover:bg-lime-400 transition-colors transform hover:-translate-y-1 active:translate-y-0"
                   style={{ fontFamily: "var(--font-jetbrains), monospace" }}
                 >
-                  Launch Terminal
+                  Dashboard
                 </Link>
                 <Link
-                  href="/waitlist"
+                  href="/auth"
                   className="px-8 py-4 border border-slate-700 font-bold uppercase tracking-widest hover:border-teal-500 transition-all glass-panel"
                   style={{ fontFamily: "var(--font-jetbrains), monospace" }}
                 >
-                  Join Waitlist
+                  New User
                 </Link>
               </div>
 
