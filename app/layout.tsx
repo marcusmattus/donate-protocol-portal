@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono, Outfit, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { SolanaWalletProvider } from '@/lib/solana-provider'
 import './globals.css'
 
 const inter = Inter({
@@ -51,8 +52,10 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} ${outfit.variable} ${spaceGrotesk.variable} bg-background`}
     >
       <body className="antialiased">
-        {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        <SolanaWalletProvider>
+          {children}
+          {process.env.NODE_ENV === 'production' && <Analytics />}
+        </SolanaWalletProvider>
       </body>
     </html>
   )
