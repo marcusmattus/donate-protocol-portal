@@ -1,3 +1,8 @@
+import { NextResponse } from "next/server"
+import { STRATEGIES } from "@/lib/demo-data"
+
+export async function GET() {
+  return NextResponse.json({ strategies: STRATEGIES })
 import { NextRequest, NextResponse } from "next/server"
 import { DEMO_STRATEGIES } from "@/lib/seed-data"
 

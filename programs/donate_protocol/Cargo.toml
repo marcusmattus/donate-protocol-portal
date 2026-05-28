@@ -1,0 +1,20 @@
+[package]
+name = "donate_protocol"
+version = "0.1.0"
+description = "Donate Protocol — Solana Anchor program for the agentic donation engine"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "donate_protocol"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.30.1"
+anchor-spl = "0.30.1"
