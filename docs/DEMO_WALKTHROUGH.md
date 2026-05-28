@@ -109,17 +109,26 @@ Without `BOT_TOKEN`, it prints simulated `/start` output. With a real token:
 /leaderboard
 ```
 
-## 11. MCP Server (30s)
+## 11. MCP Server (45s)
 
-OpenClaw (or any MCP-capable agent) can call:
-
-* `list_charities`, `get_charity`
-* `list_strategies`, `list_signals`, `list_donations`
-* `simulate_signal` — full pipeline as a single tool call
+A full `@modelcontextprotocol/sdk` server exposes the agent surface — 13 tools,
+5 resources, 3 prompts. OpenClaw (or Claude Desktop / Claude Code) connects via
+stdio or streamable HTTP.
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | pnpm tsx services/mcp-server/index.ts
+cd services/mcp-server
+pnpm install
+pnpm smoke          # in-process client exercises every tool/resource/prompt
+pnpm dev            # stdio transport for a host agent
+pnpm dev:http       # streamable HTTP on :8787/mcp
+pnpm inspect        # MCP Inspector UI
 ```
+
+Headline tools: `simulate_signal` (full pipeline in one call), `route_donation`,
+`check_risk`, `get_jupiter_quote`, `list_charities`, `get_protocol_stats`.
+Resources: `donate://charities`, `donate://charity/{id}`, `donate://signals`,
+`donate://donations`. Prompts: `process_signal`, `recommend_charity`,
+`impact_report`. See `services/mcp-server/README.md` for host wiring.
 
 ## 12. Anchor Program (10s, optional)
 

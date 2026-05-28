@@ -42,7 +42,11 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
-    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm tsx services/mcp-server/index.ts"
+    command: sh -c "corepack enable && cd services/mcp-server && pnpm install && pnpm dev:http"
+    environment:
+      - PORT=8787
+    ports:
+      - "8787:8787"
     stdin_open: true
     tty: true
 
