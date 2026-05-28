@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono, Outfit, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
+import { SolanaWalletProvider } from '@/lib/solana-provider'
+import { PrivyWalletProvider } from '@/components/providers/privy-provider'
 import './globals.css'
 
 const inter = Inter({
@@ -79,6 +81,12 @@ export default function RootLayout({
       <body className="antialiased">
         <Providers>{children}</Providers>
         {process.env.NODE_ENV === 'production' && <Analytics />}
+        <PrivyWalletProvider>
+          <SolanaWalletProvider>
+            {children}
+            {process.env.NODE_ENV === 'production' && <Analytics />}
+          </SolanaWalletProvider>
+        </PrivyWalletProvider>
       </body>
     </html>
   )

@@ -2,6 +2,10 @@ version: "3.9"
 
 services:
   web:
+version: '3.8'
+
+services:
+  app:
     build: .
     ports:
       - "3000:3000"
@@ -52,3 +56,20 @@ services:
 
 volumes:
   postgres-data:
+      - SOLANA_NETWORK=devnet
+      - SOLANA_RPC_URL=https://api.devnet.solana.com
+    restart: unless-stopped
+
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBHOOK_URL=http://app:3000
+      - BOT_PORT=3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - app
+    restart: unless-stopped
