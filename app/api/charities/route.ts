@@ -1,20 +1,11 @@
-import { NextResponse } from "next/server"
-import { CHARITIES } from "@/lib/demo-data"
-
-export async function GET() {
-  return NextResponse.json({ charities: CHARITIES })
 import { NextRequest, NextResponse } from "next/server"
-import { DEMO_CHARITIES } from "@/lib/seed-data"
+import { CHARITIES, CharityCategory } from "@/lib/demo-data"
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const category = searchParams.get("category")
-
-  let charities = DEMO_CHARITIES
-
-  if (category) {
-    charities = charities.filter((c) => c.category === category)
-  }
-
-  return NextResponse.json(charities)
+export async function GET(req: NextRequest) {
+  const category = req.nextUrl.searchParams.get("category") as CharityCategory | null
+  const verifiedOnly = req.nextUrl.searchParams.get("verifiedOnly") === "true"
+  let rows = CHARITIES
+  if (category) rows = rows.filter((c) => c.category === category)
+  if (verifiedOnly) rows = rows.filter((c) => c.verified)
+  return NextResponse.json({ charities: rows })
 }
