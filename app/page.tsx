@@ -114,11 +114,18 @@ export default function Home() {
                   Dashboard
                 </Link>
                 <Link
-                  href="/auth"
+                  href="/signup"
                   className="px-8 py-4 border border-slate-700 font-bold uppercase tracking-widest hover:border-teal-500 transition-all glass-panel"
                   style={{ fontFamily: "var(--font-jetbrains), monospace" }}
                 >
-                  New User
+                  Sign up
+                </Link>
+                <Link
+                  href="/login"
+                  className="px-8 py-4 border border-teal-500/40 text-teal-400 font-bold uppercase tracking-widest hover:bg-teal-500/10 transition-all"
+                  style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                >
+                  Sign in
                 </Link>
               </div>
 

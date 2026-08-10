@@ -1,9 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Portfolio } from "@/lib/types"
+import type { TradingViewDashboardSnapshot } from "@/lib/tradingview"
+import { DashboardNav } from "@/components/dashboard/dashboard-nav"
+import { TradingViewConnectionStatusCard } from "@/components/tradingview/connection-status-card"
+import { TradingViewSignalFeed } from "@/components/tradingview/signal-feed"
+import { useAuth } from "@/components/auth-provider"
 
 interface Charity {
   id: string
@@ -55,12 +59,24 @@ const charities: Charity[] = [
 
 export default function Dashboard() {
   const router = useRouter()
+  const { user, isAuthenticated, status, logout } = useAuth()
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null)
   const [walletAddress, setWalletAddress] = useState<string>("7XYDemo222")
   const [loading, setLoading] = useState(true)
   const [selectedCharity, setSelectedCharity] = useState<Charity | null>(charities[0])
   const [showCharitySelector, setShowCharitySelector] = useState(false)
   const [agentMode, setAgentMode] = useState("passive")
+  const [tvSnapshot, setTvSnapshot] = useState<TradingViewDashboardSnapshot | null>(null)
+
+  const fetchTradingView = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tradingview/connection")
+      const data = (await response.json()) as TradingViewDashboardSnapshot
+      setTvSnapshot(data)
+    } catch (error) {
+      console.error("Error fetching TradingView status:", error)
+    }
+  }, [])
 
   useEffect(() => {
     const fetchPortfolio = async () => {
@@ -76,7 +92,10 @@ export default function Dashboard() {
     }
 
     fetchPortfolio()
-  }, [walletAddress])
+    fetchTradingView()
+    const id = setInterval(fetchTradingView, 10000)
+    return () => clearInterval(id)
+  }, [walletAddress, fetchTradingView])
 
   const mockUsers = [
     { name: "Marcus Alpha", wallet: "7XYDemo111" },
@@ -116,12 +135,40 @@ export default function Dashboard() {
             <button onClick={() => router.push("/transparency")} className="text-slate-400 hover:text-slate-200 transition text-xs uppercase tracking-widest">
               Impact
             </button>
+            {isAuthenticated && user ? (
+              <button
+                onClick={() => void logout()}
+                className="text-slate-500 hover:text-teal-400 transition text-[10px] uppercase tracking-widest hidden sm:inline"
+                title={user.email}
+              >
+                {user.email.split("@")[0]} · out
+              </button>
+            ) : (
+              <Link href="/login" className="text-teal-400 hover:text-lime-400 transition text-[10px] uppercase tracking-widest">
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
       <main className="relative z-10 pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
+          {status !== "loading" && !isAuthenticated && (
+            <div className="mb-8 px-4 py-3 border border-teal-500/30 bg-teal-500/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-slate-300" style={{ fontFamily: "var(--font-jetbrains), monospace" }}>
+                Demo browsing is open. Sign in with email to save agent preferences.
+              </p>
+              <div className="flex gap-3">
+                <Link href="/login" className="text-xs uppercase tracking-widest text-teal-400 hover:text-lime-400">
+                  Sign in
+                </Link>
+                <Link href="/signup" className="text-xs uppercase tracking-widest text-lime-400 hover:text-teal-400">
+                  Sign up
+                </Link>
+              </div>
+            </div>
+          )}
           {/* Main section header */}
           <div className="mb-12 flex flex-col lg:flex-row justify-between items-start gap-8">
             <div>
@@ -233,6 +280,56 @@ export default function Dashboard() {
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* TradingView integration tracking */}
+          {tvSnapshot && (
+            <div className="mb-8 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2
+                  className="text-xl font-bold uppercase tracking-tighter"
+                  style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                >
+                  TradingView <span className="text-teal-400">Integration</span>
+                </h2>
+                <div className="flex gap-3 flex-wrap">
+                  <button
+                    onClick={() => router.push("/connect/tradingview")}
+                    className="text-[10px] uppercase tracking-widest text-teal-400 hover:text-lime-400"
+                    style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                  >
+                    Connection point →
+                  </button>
+                  <button
+                    onClick={() => router.push("/dashboard/signals")}
+                    className="text-[10px] uppercase tracking-widest text-slate-400 hover:text-white"
+                    style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                  >
+                    All signals →
+                  </button>
+                  <button
+                    onClick={() => router.push("/dashboard/settings")}
+                    className="text-[10px] uppercase tracking-widest text-slate-400 hover:text-white"
+                    style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                  >
+                    Settings →
+                  </button>
+                </div>
+              </div>
+              <TradingViewConnectionStatusCard connection={tvSnapshot.connection} compact />
+              <div className="glass-panel p-6 border-teal-500/20">
+                <h3
+                  className="text-sm font-bold uppercase tracking-tighter mb-4 text-slate-300"
+                  style={{ fontFamily: "var(--font-jetbrains), monospace" }}
+                >
+                  Latest TradingView signals
+                </h3>
+                <TradingViewSignalFeed
+                  signals={tvSnapshot.recentSignals.slice(0, 5)}
+                  emptyLabel="No TradingView signals yet — connect or simulate from /connect/tradingview"
+                />
               </div>
             </div>
           )}
@@ -395,7 +492,15 @@ export default function Dashboard() {
               </div>
 
               {/* Quick Actions */}
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-4 gap-4">
+                <button 
+                  onClick={() => router.push("/connect/tradingview")}
+                  className="glass-panel p-6 border-teal-500/20 hover:border-teal-500 transition text-left group"
+                >
+                  <div className="text-[10px] text-teal-400 uppercase font-bold tracking-widest mb-2">Integrate</div>
+                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-teal-400 transition">TradingView</h3>
+                  <p className="text-[10px] text-slate-500">Connect alerts/webhooks and track signal status</p>
+                </button>
                 <button 
                   onClick={() => router.push("/live-donation")}
                   className="glass-panel p-6 border-teal-500/20 hover:border-teal-500 transition text-left group"
@@ -413,12 +518,12 @@ export default function Dashboard() {
                   <p className="text-[10px] text-slate-500">Copy verified strategies from top traders</p>
                 </button>
                 <button 
-                  onClick={() => router.push("/charities")}
+                  onClick={() => router.push("/dashboard/signals")}
                   className="glass-panel p-6 border-slate-800 hover:border-slate-600 transition text-left group"
                 >
-                  <div className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">Browse</div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-white transition">All Charities</h3>
-                  <p className="text-[10px] text-slate-500">View complete list of verified impact destinations</p>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">Monitor</div>
+                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-white transition">Signal Feed</h3>
+                  <p className="text-[10px] text-slate-500">Review TradingView ingest history and events</p>
                 </button>
               </div>
             </div>

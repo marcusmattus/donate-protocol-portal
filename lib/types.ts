@@ -92,10 +92,20 @@ export interface WebhookPayload {
   timestamp?: string
 }
 
-export interface TradingViewSignal {
+/** @deprecated Prefer `@/lib/tradingview` TradingViewSignal — kept for older imports */
+export interface LegacyTradingViewSignal {
   symbol: string
   action: "BUY" | "SELL"
   price: number
   timestamp: string
   strategy: string
 }
+
+export type {
+  TradingViewSignal,
+  TradingViewConnectionState,
+  TradingViewWebhookEvent,
+  TradingViewChartActionEvent,
+  TradingViewSetupStep,
+  TradingViewConnectionStatus,
+} from "./tradingview/types"

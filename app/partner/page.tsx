@@ -47,8 +47,8 @@ export default function PartnerPage() {
             <Link href="/waitlist" className="hidden md:block text-sm font-bold text-slate-400 hover:text-indigo-600 transition-colors" style={{ fontFamily: "var(--font-outfit), sans-serif" }}>
               Waitlist
             </Link>
-            <Link href="/auth" style={{ fontFamily: "var(--font-outfit), sans-serif" }} className="bg-slate-900 text-white px-6 py-2.5 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg">
-              Sign In
+            <Link href="/signup" style={{ fontFamily: "var(--font-outfit), sans-serif" }} className="bg-slate-900 text-white px-6 py-2.5 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg">
+              Sign Up
             </Link>
           </div>
         </div>

@@ -289,7 +289,14 @@ export const DEMO_PORTFOLIOS: Record<string, Portfolio> = {
   },
 }
 
-export const DEMO_WEBHOOK_URL = "https://api.donate-protocol.demo/webhooks/tradingview/demo123"
+/** Demo TradingView webhook token (override via TRADINGVIEW_WEBHOOK_TOKEN). */
+export const DEMO_TRADINGVIEW_TOKEN = "demo123"
+
+/** Canonical demo webhook URL — mirrors lib/tradingview/config build helper. */
+export const DEMO_WEBHOOK_URL =
+  process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/webhooks/tradingview/${DEMO_TRADINGVIEW_TOKEN}`
+    : `http://localhost:3000/api/webhooks/tradingview/${DEMO_TRADINGVIEW_TOKEN}`
 
 // Utility functions for demo data
 export function getDemoUser(walletAddress: string): DemoUser | undefined {

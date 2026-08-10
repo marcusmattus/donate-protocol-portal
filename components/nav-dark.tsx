@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
+import { AuthNav } from "@/components/auth-nav"
 
 export function NavDark() {
   const [scrolled, setScrolled] = useState(false)
@@ -14,7 +15,9 @@ export function NavDark() {
 
   return (
     <nav
-      className={`sticky top-0 z-40 border-b border-teal-500/20 glass-panel px-6 py-3 flex items-center justify-between transition-all duration-300`}
+      className={`sticky top-0 z-40 border-b border-teal-500/20 glass-panel px-6 py-3 flex items-center justify-between transition-all duration-300 ${
+        scrolled ? "bg-black/40" : ""
+      }`}
     >
       <div className="flex items-center gap-8">
         <Link href="/" className="flex items-center gap-2 group cursor-pointer">
@@ -65,13 +68,7 @@ export function NavDark() {
           <span className="w-2 h-2 rounded-full bg-lime-500 animate-pulse" />
           SOL MAINNET: $182.44
         </div>
-        <Link
-          href="/auth"
-          style={{ fontFamily: "var(--font-jetbrains), monospace" }}
-          className="px-4 py-1.5 border border-teal-500 text-teal-400 text-xs uppercase tracking-tighter transition-all glass-panel hover:bg-teal-500/10"
-        >
-          Initialize_Auth
-        </Link>
+        <AuthNav variant="dark" />
       </div>
     </nav>
   )

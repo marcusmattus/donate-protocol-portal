@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useAuth } from "@/components/auth-provider"
 
 export default function PrivateWalletPage() {
   const router = useRouter()
-  const [authenticated, setAuthenticated] = useState(false)
+  const { user, status, isAuthenticated, logout } = useAuth()
   const [activeTab, setActiveTab] = useState<"overview" | "exchanges" | "wallets" | "settings">(
     "overview"
   )
-  const [loading, setLoading] = useState(true)
   const [exchangeTab, setExchangeTab] = useState<"connect" | "list">("list")
   const [error, setError] = useState<string | null>(null)
 
@@ -50,16 +50,11 @@ export default function PrivateWalletPage() {
     },
   ])
 
-  // Check auth on mount
   useEffect(() => {
-    const token = localStorage.getItem("authToken")
-    if (!token) {
+    if (status === "unauthenticated") {
       router.push("/private-wallet-login")
-    } else {
-      setAuthenticated(true)
-      setLoading(false)
     }
-  }, [router])
+  }, [status, router])
 
   const handleConnectExchange = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,7 +66,7 @@ export default function PrivateWalletPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "user_demo_001",
+          userId: user?.id || "user_demo_001",
           exchangeName: selectedExchange,
           apiKey,
           apiSecret,
@@ -113,12 +108,12 @@ export default function PrivateWalletPage() {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken")
+  const handleLogout = async () => {
+    await logout()
     router.push("/")
   }
 
-  if (loading) {
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-[#020617] flex items-center justify-center">
         <div className="text-teal-400 animate-pulse">Loading...</div>
@@ -126,7 +121,7 @@ export default function PrivateWalletPage() {
     )
   }
 
-  if (!authenticated) {
+  if (!isAuthenticated) {
     return null
   }
 
@@ -408,6 +403,18 @@ export default function PrivateWalletPage() {
                 <h3 className="text-xl font-bold mb-6">Settings</h3>
 
                 <div className="space-y-6">
+                  <div className="p-4 bg-slate-900/50 border border-teal-500/30 rounded">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2" style={{ fontFamily: "var(--font-jetbrains), monospace" }}>
+                      Connected email
+                    </div>
+                    <div className="font-bold text-teal-400 break-all">{user?.email}</div>
+                    <div className="text-sm text-slate-400 mt-1">{user?.fullName}</div>
+                    <div className="mt-3 inline-flex items-center gap-2 text-[10px] uppercase tracking-widest text-lime-400" style={{ fontFamily: "var(--font-jetbrains), monospace" }}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />
+                      Session active
+                    </div>
+                  </div>
+
                   <div className="p-4 bg-slate-900/50 border border-slate-800 rounded">
                     <label className="flex items-center justify-between">
                       <span className="font-bold">Auto-Login Enabled</span>

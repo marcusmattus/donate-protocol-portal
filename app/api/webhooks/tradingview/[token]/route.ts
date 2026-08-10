@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import {
-  getTradingViewWebhookHistory,
-  ingestTradingViewWebhook,
-  TRADINGVIEW_CONFIG,
-} from "@/lib/tradingview"
+import { ingestTradingViewWebhook } from "@/lib/tradingview"
+
+type RouteContext = { params: Promise<{ token: string }> }
 
 /**
- * POST /api/webhooks/tradingview
- * Backward-compatible ingest using the default demo token.
- * Prefer POST /api/webhooks/tradingview/:token for production-shaped URLs.
+ * POST /api/webhooks/tradingview/:token
+ * Token-scoped TradingView alert webhook ingestion.
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    const { token } = await context.params
     const payload = await request.json()
+
     const result = ingestTradingViewWebhook({
-      token: TRADINGVIEW_CONFIG.defaultToken,
+      token,
       payload,
       source: "webhook",
     })
@@ -37,11 +36,16 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error("Webhook error:", error)
+    console.error("TradingView webhook error:", error)
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
   }
 }
 
-export async function GET() {
-  return NextResponse.json(getTradingViewWebhookHistory())
+export async function GET(_request: NextRequest, context: RouteContext) {
+  const { token } = await context.params
+  return NextResponse.json({
+    ok: true,
+    endpoint: `/api/webhooks/tradingview/${token}`,
+    message: "POST TradingView alert JSON to this URL",
+  })
 }

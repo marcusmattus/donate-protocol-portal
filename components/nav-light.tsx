@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect } from "react"
+import { AuthNav } from "@/components/auth-nav"
 
 export function NavLight() {
   const [scrolled, setScrolled] = useState(false)
@@ -52,13 +53,16 @@ export function NavLight() {
           </Link>
         </div>
 
-        <Link
-          href="/waitlist"
-          className="bg-slate-900 text-white px-7 py-3 rounded-full font-bold text-sm tracking-tight hover:scale-105 transition-transform active:scale-95 shadow-xl"
-          style={{ fontFamily: "var(--font-outfit), sans-serif" }}
-        >
-          Join Waitlist
-        </Link>
+        <div className="flex items-center gap-3">
+          <AuthNav variant="light" />
+          <Link
+            href="/waitlist"
+            className="hidden sm:inline-flex bg-slate-900 text-white px-6 py-2.5 rounded-full font-bold text-sm tracking-tight hover:scale-105 transition-transform active:scale-95 shadow-xl"
+            style={{ fontFamily: "var(--font-outfit), sans-serif" }}
+          >
+            Join Waitlist
+          </Link>
+        </div>
       </div>
     </nav>
   )
