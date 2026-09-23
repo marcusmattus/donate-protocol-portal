@@ -9,10 +9,12 @@ const NAV = [
   { href: "/dashboard/signals", label: "Signals", code: "01" },
   { href: "/dashboard/strategies", label: "Strategies", code: "02" },
   { href: "/dashboard/portfolio", label: "Portfolio", code: "03" },
-  { href: "/dashboard/donations", label: "Donation Impact", code: "04" },
-  { href: "/marketplace", label: "Marketplace", code: "05" },
-  { href: "/dashboard/leaderboard", label: "Leaderboard", code: "06" },
-  { href: "/dashboard/settings", label: "Settings", code: "07" },
+  { href: "/dashboard/tradingview", label: "TV Intelligence", code: "04" },
+  { href: "/dashboard/ramp", label: "Charity Ramp", code: "05" },
+  { href: "/dashboard/donations", label: "Donation Impact", code: "06" },
+  { href: "/marketplace", label: "Marketplace", code: "07" },
+  { href: "/dashboard/leaderboard", label: "Leaderboard", code: "08" },
+  { href: "/dashboard/settings", label: "Settings", code: "09" },
 ]
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {

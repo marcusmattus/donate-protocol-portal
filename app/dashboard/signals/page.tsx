@@ -1,19 +1,26 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { RECENT_SIGNALS, TradeSignal, timeAgo } from "@/lib/demo-data"
+import { TradingViewChart } from "@/components/tradingview-chart"
 
 const mono = { fontFamily: "var(--font-jetbrains), monospace" } as const
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<TradeSignal[]>(RECENT_SIGNALS)
   const [filter, setFilter] = useState<"all" | "tradingview" | "openclaw" | "copy">("all")
+  const [focusSymbol, setFocusSymbol] = useState(RECENT_SIGNALS[0]?.symbol ?? "SOLUSDT")
+  const [origin, setOrigin] = useState("")
   const [, force] = useState(0)
 
   useEffect(() => {
     const t = setInterval(() => force((x) => x + 1), 5000)
     return () => clearInterval(t)
   }, [])
+
+  // Built client-side so the panel shows the host the operator is actually on.
+  useEffect(() => setOrigin(window.location.origin), [])
 
   const filtered = useMemo(
     () => (filter === "all" ? signals : signals.filter((s) => s.source === filter)),
@@ -35,6 +42,7 @@ export default function SignalsPage() {
     const data = await res.json()
     if (data.signal) {
       setSignals((prev) => [data.signal as TradeSignal, ...prev].slice(0, 50))
+      setFocusSymbol(data.signal.symbol)
     }
   }
 
@@ -72,6 +80,18 @@ export default function SignalsPage() {
       </header>
 
       <div className="glass-panel overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800" style={mono}>
+          <span className="text-[10px] uppercase tracking-widest text-teal-400">
+            Chart · {focusSymbol}
+          </span>
+          <span className="text-[9px] uppercase tracking-widest text-slate-600">
+            TradingView · click a row to follow
+          </span>
+        </div>
+        <TradingViewChart symbol={`BINANCE:${focusSymbol}`} interval="15" height={320} />
+      </div>
+
+      <div className="glass-panel overflow-hidden">
         <table className="w-full text-sm" style={mono}>
           <thead className="bg-slate-900/60 text-[10px] uppercase text-slate-500 tracking-widest">
             <tr>
@@ -89,7 +109,13 @@ export default function SignalsPage() {
           </thead>
           <tbody>
             {filtered.map((s) => (
-              <tr key={s.id} className="border-t border-slate-800/60 hover:bg-slate-900/40">
+              <tr
+                key={s.id}
+                onClick={() => setFocusSymbol(s.symbol)}
+                className={`border-t border-slate-800/60 hover:bg-slate-900/40 cursor-pointer ${
+                  focusSymbol === s.symbol ? "bg-slate-900/30" : ""
+                }`}
+              >
                 <td className="px-4 py-3 text-slate-400 text-[11px]">{timeAgo(s.ts)}</td>
                 <td className="px-4 py-3 text-white">{s.symbol}</td>
                 <td className={`px-4 py-3 ${s.side === "BUY" ? "text-lime-400" : "text-rose-400"}`}>{s.side}</td>
@@ -130,11 +156,22 @@ export default function SignalsPage() {
       </div>
 
       <div className="glass-panel p-4" style={mono}>
-        <div className="text-[11px] uppercase tracking-widest text-slate-400 mb-2">Public Webhook</div>
-        <div className="text-[12px] text-teal-300 break-all">
-          POST https://api.donate-protocol.example/webhooks/tradingview/demo123
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[11px] uppercase tracking-widest text-slate-400">Public Webhook</div>
+          <Link
+            href="/connect/tradingview"
+            className="text-[10px] uppercase text-teal-400 hover:text-teal-300"
+          >
+            Alert builder →
+          </Link>
         </div>
-        <pre className="mt-3 text-[11px] text-slate-300 bg-black/50 p-3 overflow-auto">
+        <div className="text-[12px] text-teal-300 break-all">
+          POST {origin || "https://your-deployment"}/api/webhooks/tradingview/demo123
+        </div>
+        <div className="grid md:grid-cols-2 gap-3 mt-3">
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Trade alert</div>
+            <pre className="text-[11px] text-slate-300 bg-black/50 p-3 overflow-auto">
 {`{
   "symbol": "SOLUSDT",
   "side": "BUY",
@@ -142,7 +179,21 @@ export default function SignalsPage() {
   "size": 50,
   "strategy": "Momentum Alpha"
 }`}
-        </pre>
+            </pre>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">
+              Ramp alert — deploys the next tranche
+            </div>
+            <pre className="text-[11px] text-slate-300 bg-black/50 p-3 overflow-auto">
+{`{
+  "action": "ramp",
+  "symbol": "SOLUSDT",
+  "price": "181.20"
+}`}
+            </pre>
+          </div>
+        </div>
       </div>
     </div>
   )
