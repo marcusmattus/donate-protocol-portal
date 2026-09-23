@@ -9,6 +9,13 @@ TradingView Signal → OpenClaw Agent → Risk Engine → Simulated Solana Trade
   → Profit Event → Donation Trigger → Charity Marketplace → Impact Dashboard
 ```
 
+Plus a second, non-directional path — give without trading at all:
+
+```
+Deposit → Jupiter swap (ramped in tranches) → Yield venue → Harvest
+  → Yield split → Charity wallet + re-compound → Principal untouched
+```
+
 Every flow in this repo is wired end-to-end with realistic dummy data. No real
 funds move; all Solana interactions are simulated against devnet semantics.
 
@@ -36,7 +43,8 @@ script.
 | `/` | Hero / homepage |
 | `/connect` → `/connect/tradingview` → `/connect/openclaw` | Wallet + signal + agent onboarding |
 | `/dashboard` | Operator overview |
-| `/dashboard/signals` | Live signal feed + signal injector |
+| `/dashboard/signals` | Live signal feed with TradingView chart + signal injector |
+| `/dashboard/ramp` | Charity Swap Ramp — yield-bearing stables, yield streamed to charity |
 | `/dashboard/strategies` | Copy-trading strategy marketplace |
 | `/dashboard/portfolio` | SPL balances + receipts |
 | `/dashboard/donations` | Donation impact dashboard |
@@ -46,9 +54,38 @@ script.
 | `/marketplace/[id]` | Charity profile |
 | `/onboard` … `/onboard/dashboard` | 7-step charity onboarding |
 
+## Charity Swap Ramp
+
+`/dashboard/ramp` is the give-the-yield tool. It swaps a deposit into a yield
+venue, keeps the principal, and streams a chosen share of the **yield only** to
+a charity wallet on every harvest.
+
+The stable leg is never flat: idle USDC is lent out (Kamino, marginfi), held as
+a yield-bearing stable (PYUSD), or LP'd into a tight stable pair (Orca), so a
+dollar-denominated position still throws off a harvestable stream. Liquid
+staking venues (JitoSOL, Marinade) are available for anyone who wants the
+principal to ride SOL instead.
+
+"Ramping" means the swap in is split into N tranches spaced over time rather
+than one market order. That cuts price impact but deploys capital later, so the
+console reports both sides of the trade-off and the net.
+
+- `lib/yield-venues.ts` — venue catalog (APY, compounding, risk, depth, fees)
+- `lib/charity-ramp.ts` — pure, deterministic projection engine: tranche
+  quoting, square-root price impact, day-by-day accrual, harvest-time donation
+  skim (donated yield stops compounding), ramp-vs-lump-sum comparison
+- `lib/ramp-store.ts` — in-memory position store (swap for Prisma before real custody)
+
+APY and depth figures are demo values. Wire each venue to its own rate API
+before mainnet.
+
 ## API
 
-- `POST /api/webhooks/tradingview/:token` — TradingView webhook ingestion
+- `POST /api/webhooks/tradingview/:token` — TradingView webhook ingestion.
+  Send `{"action":"ramp"}` instead of a trade payload and each alert deploys the
+  next Charity Ramp tranche, so DCA follows your chart rather than a clock.
+- `GET /api/ramp` — venue catalog, charities, open positions
+- `POST /api/ramp` — `{"action":"quote"}` for a projection, `{"action":"execute"}` to open a position
 - `POST /api/openclaw/run` — Full agent pipeline simulation
 - `GET /api/charities`, `/api/charities/:id`
 - `GET /api/strategies`, `/api/signals`, `/api/donations`

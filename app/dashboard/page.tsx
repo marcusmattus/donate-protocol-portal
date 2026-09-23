@@ -42,6 +42,9 @@ export default function DashboardOverview() {
           <Link href="/connect/openclaw" className="px-3 py-2 text-[10px] uppercase border border-slate-700 text-slate-300 hover:border-teal-500/60">
             OpenClaw
           </Link>
+          <Link href="/dashboard/ramp" className="px-3 py-2 text-[10px] uppercase border border-lime-500/40 text-lime-300 hover:bg-lime-500/10">
+            Charity Ramp
+          </Link>
         </div>
       </header>
 
