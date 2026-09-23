@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test:demo": "node demo-test.js",
+    "test:security": "node ramp-security-test.js",
     "bot:telegram": "node telegram-bot.js",
     "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'"
   },

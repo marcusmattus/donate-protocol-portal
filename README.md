@@ -79,6 +79,25 @@ console reports both sides of the trade-off and the net.
 APY and depth figures are demo values. Wire each venue to its own rate API
 before mainnet.
 
+### Security regression
+
+```bash
+npm run dev            # or next start
+npm run test:security  # BASE_URL=http://localhost:3000 by default
+```
+
+`ramp-security-test.js` pins the properties that keep the ramp webhook safe:
+the token gate (including case, whitespace and traversal variants), bounded
+fills so replayed alerts cannot deploy past the schedule, input clamping on
+`/api/ramp`, malformed bodies failing closed with 400 rather than 500, and no
+secret-shaped keys in responses.
+
+**Known pre-existing gap:** `POST /api/webhooks/tradingview` (the untokenized
+route, distinct from `/:token`) has no authentication and will simulate a trade
+and a donation for any caller. It predates the ramp work and is untouched by
+it; the suite asserts only that it cannot reach the ramp machinery. It needs a
+token gate or removal before any deployment that matters.
+
 ## API
 
 - `POST /api/webhooks/tradingview/:token` — TradingView webhook ingestion.
