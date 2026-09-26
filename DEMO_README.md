@@ -161,6 +161,7 @@ npm run dev
 ### 2. Send TradingView Signal
 ```bash
 curl -X POST http://localhost:3000/api/webhooks/tradingview \
+  -H "x-webhook-token: demo123" \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "SOLUSDT",

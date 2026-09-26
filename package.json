@@ -2,6 +2,7 @@
   "name": "my-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,7 +13,7 @@
     "test:tradingview": "node tradingview-pipeline-test.js",
     "tv:reconcile": "node scripts/tv-reconcile.mjs",
     "bot:telegram": "node telegram-bot.js",
-    "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'"
+    "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -H \"x-webhook-token: ${WEBHOOK_TOKEN:-demo123}\" -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

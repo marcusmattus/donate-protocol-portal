@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { WebhookPayload } from "@/lib/types"
 import { DEMO_PORTFOLIOS, getStrategyById, getCharityById } from "@/lib/seed-data"
+import { authorizeWebhook } from "@/lib/pipeline/webhook-tokens"
+import * as audit from "@/lib/pipeline/audit"
+
+// This route has no `:token` path segment, so the token arrives as the
+// x-webhook-token header, an Authorization: Bearer value, or ?token=.
+// It previously had no authentication at all: any caller could post a payload
+// and it would simulate a trade and emit a donation event.
+//
+// Prefer /api/webhooks/tradingview/alert/:token for anything new — it runs the
+// full verify → deduplicate → normalize → risk → intent pipeline. This route is
+// kept because demo-test.js and the quickstart docs target it, and it is now
+// gated by the same tokens as its siblings.
 
 // In-memory storage for demo
 let tradeSignals: any[] = []
@@ -75,6 +87,24 @@ async function processTradeSignal(payload: WebhookPayload) {
 }
 
 export async function POST(request: NextRequest) {
+  const correlationId = audit.newCorrelationId("tv_legacy")
+
+  const auth = authorizeWebhook(request)
+  if (!auth.ok) {
+    audit.append({
+      correlationId,
+      stage: "tradingview.webhook",
+      outcome: "rejected",
+      userId: "unauthenticated",
+      summary: `legacy webhook rejected: ${auth.rejection}`,
+      detail: { route: "/api/webhooks/tradingview", rejection: auth.rejection },
+    })
+    return NextResponse.json(
+      { error: auth.message, rejected: auth.rejection },
+      { status: auth.status ?? 401 }
+    )
+  }
+
   try {
     const payload: WebhookPayload = await request.json()
 
@@ -89,6 +119,21 @@ export async function POST(request: NextRequest) {
     // Process the trade signal
     const result = await processTradeSignal(payload)
 
+    audit.append({
+      correlationId,
+      stage: "tradingview.webhook",
+      outcome: "ok",
+      userId: "legacy-webhook",
+      summary: `legacy webhook processed ${payload.symbol} ${payload.side}`,
+      detail: {
+        route: "/api/webhooks/tradingview",
+        symbol: payload.symbol,
+        side: payload.side,
+        strategy: payload.strategy,
+        donationTriggered: Boolean((result as { donation?: unknown }).donation),
+      },
+    })
+
     return NextResponse.json(result, { status: 200 })
   } catch (error) {
     console.error("Webhook error:", error)
@@ -96,7 +141,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+/**
+ * Signal and donation history.
+ *
+ * Gated too: the response carries wallet addresses and donation amounts, so an
+ * open GET leaked the activity of everyone the route had processed.
+ */
+export async function GET(request: NextRequest) {
+  const auth = authorizeWebhook(request)
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message, rejected: auth.rejection },
+      { status: auth.status ?? 401 }
+    )
+  }
+
   return NextResponse.json({
     recentSignals: tradeSignals.slice(-10).reverse(),
     recentDonations: donationEvents.slice(-10).reverse(),

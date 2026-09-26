@@ -3,16 +3,19 @@ import { CHARITIES, RECENT_SIGNALS, STRATEGIES, TradeSignal, findCharity } from 
 import { runRiskCheck, simulateTradeAndDonation, generateDemoTx } from "@/lib/solana"
 import { findRampPosition, openRamps, recordRampFill } from "@/lib/ramp-store"
 import { buildRampSchedule } from "@/lib/charity-ramp"
-
-const VALID_TOKENS = new Set(["demo123", "demo456"])
+import { authorizeWebhook, validWebhookTokens } from "@/lib/pipeline/webhook-tokens"
 
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ token: string }> }
 ) {
   const { token } = await ctx.params
-  if (!VALID_TOKENS.has(token)) {
-    return NextResponse.json({ error: "invalid token" }, { status: 401 })
+  const auth = authorizeWebhook(req, token)
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message ?? "invalid token", rejected: auth.rejection },
+      { status: auth.status ?? 401 }
+    )
   }
 
   let payload: any
@@ -138,7 +141,20 @@ function handleRampAlert(payload: Record<string, unknown>) {
   }
 }
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params
-  return NextResponse.json({ webhook: token, accepts: "POST application/json", validTokens: [...VALID_TOKENS] })
+  const auth = authorizeWebhook(req, token)
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message ?? "invalid token", rejected: auth.rejection },
+      { status: auth.status ?? 401 }
+    )
+  }
+  // Reports only how many tokens are configured. The previous version returned
+  // the token list itself, publishing the credentials this route checks.
+  return NextResponse.json({
+    webhook: token,
+    accepts: "POST application/json",
+    configuredTokenCount: validWebhookTokens().size,
+  })
 }
