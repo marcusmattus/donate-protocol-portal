@@ -11,7 +11,12 @@ const http = require("http")
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"
 
-function makeRequest(method, path, body = null) {
+// The TradingView webhook routes require a token. Outside production the server
+// falls back to the devnet demo tokens, so this default works against a local
+// dev server; set WEBHOOK_TOKEN to match a configured deployment.
+const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "demo123"
+
+function makeRequest(method, path, body = null, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(BASE_URL + path)
     const options = {
@@ -21,6 +26,7 @@ function makeRequest(method, path, body = null) {
       method: method,
       headers: {
         "Content-Type": "application/json",
+        ...extraHeaders,
       },
     }
 
@@ -151,7 +157,9 @@ async function runTests() {
       price: "181.20",
       strategy: "momentum-alpha",
     }
-    const res = await makeRequest("POST", "/api/webhooks/tradingview", payload)
+    const res = await makeRequest("POST", "/api/webhooks/tradingview", payload, {
+      "x-webhook-token": WEBHOOK_TOKEN,
+    })
     if (res.status === 200 && res.body.signal) {
       console.log(`✅ PASS - Trade signal processed`)
       if (res.body.donation) {
@@ -170,7 +178,9 @@ async function runTests() {
   // Test 7: Get Webhook History
   console.log("\n📝 Test 7: Get Webhook History")
   try {
-    const res = await makeRequest("GET", "/api/webhooks/tradingview")
+    const res = await makeRequest("GET", "/api/webhooks/tradingview", null, {
+      "x-webhook-token": WEBHOOK_TOKEN,
+    })
     if (res.status === 200) {
       console.log(
         `✅ PASS - Processed ${res.body.totalSignalsProcessed} signals, triggered ${res.body.totalDonationsTriggered} donations`
@@ -189,7 +199,9 @@ async function runTests() {
   console.log("\n📝 Test 8: Invalid TradingView Signal (should fail)")
   try {
     const payload = { symbol: "SOLUSDT" }
-    const res = await makeRequest("POST", "/api/webhooks/tradingview", payload)
+    const res = await makeRequest("POST", "/api/webhooks/tradingview", payload, {
+      "x-webhook-token": WEBHOOK_TOKEN,
+    })
     if (res.status === 400) {
       console.log(`✅ PASS - Correctly rejected invalid payload`)
       passed++

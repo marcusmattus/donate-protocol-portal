@@ -15,15 +15,21 @@
  */
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000"
-const VALID_TOKEN = "demo123"
+// Must match the server's configuration: when TRADINGVIEW_ALERT_TOKENS (or
+// WEBHOOK_SECRET) is set, the devnet demo tokens no longer apply.
+const VALID_TOKEN =
+  process.env.WEBHOOK_TOKEN ||
+  process.env.TRADINGVIEW_ALERT_TOKENS?.split(",")[0]?.trim() ||
+  process.env.WEBHOOK_SECRET ||
+  "demo123"
 
 let passed = 0
 let failed = 0
 
-async function req(method, path, body) {
+async function req(method, path, body, extraHeaders = {}) {
   const res = await fetch(BASE_URL + path, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   })
   const text = await res.text()
@@ -75,18 +81,30 @@ async function run() {
   })
   check("trade action rejected for bad token", tradeBadToken.status === 401, `got ${tradeBadToken.status}`)
 
-  // The legacy untokenized route (POST /api/webhooks/tradingview) predates this
-  // work and has no auth at all — it simulates a trade and a donation for any
-  // caller. That is a known pre-existing gap, tracked separately. What this PR
-  // must guarantee is that it cannot reach the ramp machinery: only the
-  // token-gated route advances a position.
+  // The legacy route at POST /api/webhooks/tradingview takes no :token path
+  // segment. It used to require no authentication at all; it now takes the same
+  // tokens as its siblings via header, bearer value or ?token=. Both properties
+  // are asserted: it rejects an unauthenticated caller, and even an
+  // authenticated one cannot reach the ramp machinery from there.
   const legacyRamp = await req("POST", "/api/webhooks/tradingview", {
     action: "ramp",
     rampId: "ramp-anything",
   })
-  const legacyText = JSON.stringify(legacyRamp.body)
   check(
-    "untokenized legacy route cannot advance a ramp",
+    "legacy route rejects an unauthenticated request",
+    legacyRamp.status === 401 || legacyRamp.status === 503,
+    `got ${legacyRamp.status}`
+  )
+
+  const legacyRampAuthed = await req(
+    "POST",
+    "/api/webhooks/tradingview",
+    { action: "ramp", rampId: "ramp-anything" },
+    { "x-webhook-token": VALID_TOKEN }
+  )
+  const legacyText = JSON.stringify(legacyRampAuthed.body)
+  check(
+    "legacy route cannot advance a ramp even when authenticated",
     !/\brampId\b|"tranche"|"venue"/.test(legacyText),
     legacyText.slice(0, 160)
   )

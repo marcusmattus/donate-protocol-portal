@@ -132,7 +132,8 @@ answer 200 so TradingView stops retrying, and unknowns — a calendar that could
 not be fetched — are treated as risk rather than as an all-clear.
 
 ```bash
-npm run test:tradingview   # 31 assertions against a running server
+npm run test:security      # 30 assertions against a running server
+npm run test:tradingview   # 42 assertions against a running server
 ```
 
 ## Charity Swap Ramp
@@ -173,11 +174,29 @@ fills so replayed alerts cannot deploy past the schedule, input clamping on
 `/api/ramp`, malformed bodies failing closed with 400 rather than 500, and no
 secret-shaped keys in responses.
 
-**Known pre-existing gap:** `POST /api/webhooks/tradingview` (the untokenized
-route, distinct from `/:token`) has no authentication and will simulate a trade
-and a donation for any caller. It predates the ramp work and is untouched by
-it; the suite asserts only that it cannot reach the ramp machinery. It needs a
-token gate or removal before any deployment that matters.
+### Webhook authentication
+
+All three webhook routes take their tokens from one place,
+`lib/pipeline/webhook-tokens.ts`:
+
+| Source | Notes |
+| --- | --- |
+| `TRADINGVIEW_ALERT_TOKENS` | comma-separated, the documented setting |
+| `WEBHOOK_SECRET` | single token, the repo's older setting |
+| `demo123` / `demo456` | **non-production only** — what keeps `npm run test:demo` and the curl snippets below working locally |
+
+**In production with neither variable set, every webhook request is rejected
+with 503.** The demo tokens are unavailable once `NODE_ENV=production`, so a
+deployment cannot inherit a credential that is published in this README.
+
+`POST /api/webhooks/tradingview` has no `:token` path segment, so it accepts the
+token as an `x-webhook-token` header, an `Authorization: Bearer` value, or a
+`?token=` query parameter (the header is preferred; a query parameter lands in
+access logs). Its `GET` history is gated too — that response carries wallet
+addresses and donation amounts.
+
+Prefer `/api/webhooks/tradingview/alert/:token` for anything new: it runs the
+full verify → deduplicate → normalize → risk → intent pipeline.
 
 ## API
 

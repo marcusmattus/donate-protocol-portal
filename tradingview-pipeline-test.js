@@ -80,6 +80,75 @@ async function run() {
     console.log("   assertions are skipped. Set it to exercise them.\n")
   }
 
+  // ── Legacy route (no :token path segment) ─────────────────────────
+  // It used to accept anything. These are the regression that keeps it closed.
+  console.log("\n— legacy route (no path token) —")
+
+  const legacyPayload = { symbol: "SOLUSDT", side: "BUY", price: "181.20", strategy: "momentum-alpha" }
+
+  const legacyNoAuth = await req("POST", "/api/webhooks/tradingview", legacyPayload)
+  check(
+    "legacy POST rejects an unauthenticated request",
+    legacyNoAuth.status === 401 || legacyNoAuth.status === 503,
+    `got ${legacyNoAuth.status}`
+  )
+  check(
+    "legacy POST emits no donation when unauthenticated",
+    !/"donation"/.test(legacyNoAuth.raw),
+    legacyNoAuth.raw.slice(0, 160)
+  )
+
+  const legacyGetNoAuth = await req("GET", "/api/webhooks/tradingview")
+  check(
+    "legacy GET history rejects an unauthenticated request",
+    legacyGetNoAuth.status === 401 || legacyGetNoAuth.status === 503,
+    `got ${legacyGetNoAuth.status}`
+  )
+  check(
+    "legacy GET leaks no wallets or signals when unauthenticated",
+    !/"recentSignals"|"recentDonations"|"fromWallet"/.test(legacyGetNoAuth.raw),
+    legacyGetNoAuth.raw.slice(0, 160)
+  )
+
+  for (const bad of ["wrong", TOKEN + "x", TOKEN.toUpperCase() + "Z"]) {
+    const r = await req("POST", "/api/webhooks/tradingview", legacyPayload, { "x-webhook-token": bad })
+    check(
+      `legacy POST rejects header token ${JSON.stringify(bad)}`,
+      r.status === 401 || r.status === 503,
+      `got ${r.status}`
+    )
+  }
+
+  const legacyQueryBad = await req("POST", "/api/webhooks/tradingview?token=wrong", legacyPayload)
+  check(
+    "legacy POST rejects a bad ?token=",
+    legacyQueryBad.status === 401 || legacyQueryBad.status === 503,
+    `got ${legacyQueryBad.status}`
+  )
+
+  const legacyAuthed = await req("POST", "/api/webhooks/tradingview", legacyPayload, {
+    "x-webhook-token": TOKEN,
+  })
+  check(
+    "legacy POST accepts a valid header token",
+    legacyAuthed.status === 200 && Boolean(legacyAuthed.body?.signal),
+    `got ${legacyAuthed.status}`
+  )
+
+  const legacyBearer = await req("POST", "/api/webhooks/tradingview", legacyPayload, {
+    authorization: `Bearer ${TOKEN}`,
+  })
+  check("legacy POST accepts an Authorization: Bearer token", legacyBearer.status === 200, `got ${legacyBearer.status}`)
+
+  // The :token route's GET used to return every valid token, publishing the
+  // credentials it exists to check.
+  const tokenRouteGet = await req("GET", `/api/webhooks/tradingview/${encodeURIComponent(TOKEN)}`)
+  check(
+    ":token GET no longer publishes the token list",
+    !/"validTokens"/.test(tokenRouteGet.raw),
+    tokenRouteGet.raw.slice(0, 160)
+  )
+
   // ── Malformed input fails closed ──────────────────────────────────
   console.log("\n— malformed input —")
   const badJson = await req("POST", alertPath(TOKEN), "{not json")

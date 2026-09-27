@@ -90,6 +90,7 @@ Response includes:
 
 ```bash
 curl -X POST http://localhost:3000/api/webhooks/tradingview \
+  -H "x-webhook-token: demo123" \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "SOLUSDT",
@@ -108,7 +109,7 @@ Response includes:
 ### 6. Check Webhook History
 
 ```bash
-curl http://localhost:3000/api/webhooks/tradingview | jq
+curl -H "x-webhook-token: demo123" http://localhost:3000/api/webhooks/tradingview | jq
 ```
 
 Shows:
@@ -193,14 +194,15 @@ curl "http://localhost:3000/api/portfolio?wallet=7XYDemo222" | jq '.totalPnL'
 
 # Step 2: Send TradingView signal
 curl -X POST http://localhost:3000/api/webhooks/tradingview \
+  -H "x-webhook-token: demo123" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"SOLUSDT","side":"BUY","price":"181.20","strategy":"momentum-alpha"}' | jq '.signal.pnl, .donation.amount'
 
 # Step 3: Check webhook history
-curl http://localhost:3000/api/webhooks/tradingview | jq '.totalSignalsProcessed, .totalDonationsTriggered'
+curl -H "x-webhook-token: demo123" http://localhost:3000/api/webhooks/tradingview | jq '.totalSignalsProcessed, .totalDonationsTriggered'
 
 # Step 4: Verify donation
-curl http://localhost:3000/api/webhooks/tradingview | jq '.recentDonations[0]'
+curl -H "x-webhook-token: demo123" http://localhost:3000/api/webhooks/tradingview | jq '.recentDonations[0]'
 ```
 
 ## Telegram Bot (Optional)

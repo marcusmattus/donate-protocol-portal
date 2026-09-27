@@ -6,6 +6,7 @@ import { createExecutionIntent, ExecutionAuthorizationError } from "@/lib/pipeli
 import { build_market_context } from "@/lib/agent-tools/market-intelligence"
 import { isConnected } from "@/lib/tradingview/connector"
 import { currentUserId } from "@/lib/pipeline/current-user"
+import { validWebhookTokens } from "@/lib/pipeline/webhook-tokens"
 import * as audit from "@/lib/pipeline/audit"
 
 /**
@@ -19,11 +20,6 @@ import * as audit from "@/lib/pipeline/audit"
  * authorized and which a separate execution stage acts on under the user's
  * paper/live policy.
  */
-
-function validTokens(): Set<string> {
-  const raw = process.env.TRADINGVIEW_ALERT_TOKENS || process.env.WEBHOOK_SECRET || ""
-  return new Set(raw.split(",").map((t) => t.trim()).filter(Boolean))
-}
 
 function policyFor(_userId: string): UserRiskPolicy {
   // Per-user policies live in settings; until that store exists, the default is
@@ -39,14 +35,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   // Read the body as text: the signature is computed over the exact bytes.
   const rawBody = await req.text()
 
-  const tokens = validTokens()
+  const tokens = validWebhookTokens()
   if (tokens.size === 0) {
     audit.append({
       correlationId, stage: "tradingview.webhook", outcome: "rejected", userId,
       summary: "alert rejected: no webhook tokens configured", detail: {},
     })
     return NextResponse.json(
-      { error: "webhook is not configured", hint: "set TRADINGVIEW_ALERT_TOKENS" },
+      {
+        error: "webhook is not configured",
+        hint: "set TRADINGVIEW_ALERT_TOKENS (comma-separated) or WEBHOOK_SECRET",
+      },
       { status: 503 }
     )
   }
