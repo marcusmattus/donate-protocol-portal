@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as audit from "@/lib/pipeline/audit"
-import { currentUserId } from "@/lib/pipeline/current-user"
+import { currentUserIdAsync } from "@/lib/pipeline/current-user"
 
 /**
  * Audit ledger reader.
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     events: audit.list({
-      userId: scopeAll ? undefined : currentUserId(req),
+      userId: scopeAll ? undefined : await currentUserIdAsync(req),
       stage: stage ?? undefined,
       limit,
     }),
