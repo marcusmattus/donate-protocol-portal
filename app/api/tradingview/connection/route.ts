@@ -3,13 +3,13 @@ import { describeConnection, disconnect, getConnection } from "@/lib/tradingview
 import { connectorHealth, refreshCapabilities, resetClient } from "@/lib/tradingview/connector"
 import { revokeTokens } from "@/lib/tradingview/oauth"
 import { unverifiedCapabilities, ALL_CAPABILITIES } from "@/lib/tradingview/catalog"
-import { currentUserId } from "@/lib/pipeline/current-user"
+import { currentUserIdAsync } from "@/lib/pipeline/current-user"
 import { cacheStats } from "@/lib/tradingview/cache"
 import * as audit from "@/lib/pipeline/audit"
 
 /** Connection status, health and capability reconciliation state. No secrets. */
 export async function GET(req: NextRequest) {
-  const userId = currentUserId(req)
+  const userId = await currentUserIdAsync(req)
   return NextResponse.json({
     connection: describeConnection(userId),
     health: connectorHealth(userId),
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
 /** action: "refresh_capabilities" | "disconnect" */
 export async function POST(req: NextRequest) {
-  const userId = currentUserId(req)
+  const userId = await currentUserIdAsync(req)
   const body = await req.json().catch(() => ({}))
   const action = String(body?.action ?? "")
   const correlationId = audit.newCorrelationId("tv_conn")

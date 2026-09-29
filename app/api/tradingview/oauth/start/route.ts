@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { beginAuthorization, isOAuthConfigured, TradingViewOAuthError } from "@/lib/tradingview/oauth"
 import { putPending, updateConnection } from "@/lib/tradingview/connection-store"
-import { currentUserId } from "@/lib/pipeline/current-user"
+import { currentUserIdAsync } from "@/lib/pipeline/current-user"
 import * as audit from "@/lib/pipeline/audit"
 
 /**
@@ -11,7 +11,7 @@ import * as audit from "@/lib/pipeline/audit"
  * asks for TradingView credentials; the user authenticates on TradingView.
  */
 export async function POST(req: NextRequest) {
-  const userId = currentUserId(req)
+  const userId = await currentUserIdAsync(req)
   const correlationId = audit.newCorrelationId("tv_oauth")
 
   if (!isOAuthConfigured()) {

@@ -44,6 +44,7 @@ script.
 | `/connect` → `/connect/tradingview` → `/connect/openclaw` | Wallet + signal + agent onboarding |
 | `/dashboard` | Operator overview |
 | `/dashboard/signals` | Live signal feed with TradingView chart + signal injector |
+| `/login` | Privy sign-in |
 | `/dashboard/tradingview` | TradingView Intelligence — connection, explorer, screener, calendars, alerts |
 | `/dashboard/ramp` | Charity Swap Ramp — yield-bearing stables, yield streamed to charity |
 | `/dashboard/strategies` | Copy-trading strategy marketplace |
@@ -54,6 +55,73 @@ script.
 | `/marketplace` | Charity marketplace |
 | `/marketplace/[id]` | Charity profile |
 | `/onboard` … `/onboard/dashboard` | 7-step charity onboarding |
+
+## Login (Privy)
+
+Sign-in runs through [Privy](https://privy.io). Email or a social account
+creates an embedded Solana wallet, so someone can donate without already owning
+one; bring-your-own-wallet also works. Donate Protocol never sees a Privy
+password.
+
+```
+browser → Privy sign-in → Privy access token (ES256 JWT)
+  → POST /api/auth/privy → verified against Privy's JWKS
+  → httpOnly session cookie (HS256, our key) → currentUserIdAsync()
+```
+
+The two halves are kept distinct on purpose. Privy's hooks say whether the
+*browser* is signed in; the session cookie says whether the *server* verified
+it. They can legitimately disagree — a live Privy session with an expired
+cookie — so the UI shows both, and the dot next to your name goes green only
+once the server has verified.
+
+| Path | Role |
+| --- | --- |
+| `lib/privy/config.ts` | browser-safe config; never references the app secret |
+| `lib/privy/verify.ts` | verifies the Privy token against Privy's JWKS using `jose` |
+| `lib/privy/session.ts` | mints and reads the httpOnly session cookie |
+| `app/api/auth/privy/route.ts` | POST exchange · GET session · DELETE logout |
+| `app/login/page.tsx` | the login page |
+| `hooks/use-privy-auth.ts` | client login synced to the server session |
+
+### Setup
+
+```bash
+NEXT_PUBLIC_PRIVY_APP_ID=...   # from the Privy dashboard
+SESSION_SECRET=...             # 16+ chars, generate one; no in-repo fallback
+```
+
+With either unset, `/login` says which is missing and the exchange returns 503.
+It fails closed: an unreachable JWKS is reported as 503 rather than treated as a
+passing token, and there is no dev fallback signing key — one that shipped in
+the repo would let anyone forge a session.
+
+Verification uses `jose` against Privy's public JWKS rather than
+`@privy-io/server-auth`, which adds no dependency and runs under the edge
+runtime. `PRIVY_APP_SECRET` is **not** required: it is for Privy's management
+API, not for validating a token.
+
+```bash
+npm run test:privy   # 28 assertions against a running server
+```
+
+The suite covers what matters: forged, unsigned, expired, wrong-audience and
+HS256-where-ES256-is-required tokens are all rejected and issue no cookie;
+session cookies signed with the wrong key (including the repo's old JWT default)
+are not accepted; a byte-flip invalidates a valid one; and logging in actually
+changes the acting user — `/api/tradingview/connection` is scoped to the
+session DID with a cookie and falls back to the demo identity without one.
+
+### What a login does and does not grant
+
+Signing in establishes *identity*. It confers no trading authority: execution
+still passes the Risk Engine and the user's own policy, exactly as an
+unauthenticated signal would. `currentUserIdAsync()` is the single seam every
+TradingView and ramp route reads, so a login takes effect everywhere at once.
+
+The TradingView **alert webhook** is deliberately excluded — TradingView posts
+from its own servers with no cookie, so it authenticates by webhook token and
+attributes alerts to the demo identity. Mapping token → user is its own change.
 
 ## TradingView official MCP integration
 
@@ -209,6 +277,7 @@ full verify → deduplicate → normalize → risk → intent pipeline.
 - `POST /api/tradingview/intelligence` — read-only market intelligence ops
 - `POST /api/webhooks/tradingview/alert/:token` — secure alert ingestion
 - `GET /api/audit` — audit ledger; `?correlationId=` traces one signal end to end
+- `POST /api/auth/privy` — verify a Privy token and mint the session; `GET` reads it, `DELETE` clears it
 - `GET /api/ramp` — venue catalog, charities, open positions
 - `POST /api/ramp` — `{"action":"quote"}` for a projection, `{"action":"execute"}` to open a position
 - `POST /api/openclaw/run` — Full agent pipeline simulation

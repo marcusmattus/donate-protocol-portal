@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as tools from "@/lib/agent-tools/market-intelligence"
-import { currentUserId } from "@/lib/pipeline/current-user"
+import { currentUserIdAsync } from "@/lib/pipeline/current-user"
 import * as audit from "@/lib/pipeline/audit"
 
 /**
@@ -41,7 +41,7 @@ const HANDLERS = {
 type Op = keyof typeof HANDLERS
 
 export async function POST(req: NextRequest) {
-  const userId = currentUserId(req)
+  const userId = await currentUserIdAsync(req)
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 })

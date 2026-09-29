@@ -5,7 +5,7 @@ import { assessRisk, DEFAULT_RISK_POLICY, UserRiskPolicy } from "@/lib/pipeline/
 import { createExecutionIntent, ExecutionAuthorizationError } from "@/lib/pipeline/execution-intent"
 import { build_market_context } from "@/lib/agent-tools/market-intelligence"
 import { isConnected } from "@/lib/tradingview/connector"
-import { currentUserId } from "@/lib/pipeline/current-user"
+import { demoUserId } from "@/lib/pipeline/current-user"
 import { validWebhookTokens } from "@/lib/pipeline/webhook-tokens"
 import * as audit from "@/lib/pipeline/audit"
 
@@ -30,7 +30,12 @@ function policyFor(_userId: string): UserRiskPolicy {
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params
   const correlationId = audit.newCorrelationId("tv_alert")
-  const userId = currentUserId(req)
+  // TradingView posts from its own servers with no session cookie, so the
+  // acting user cannot come from a Privy session here — this route authenticates
+  // by webhook token. Mapping token -> user is the right fix and is its own
+  // change; until then alerts are attributed to the demo identity rather than
+  // pretending to read a cookie that will never be present.
+  const userId = demoUserId()
 
   // Read the body as text: the signature is computed over the exact bytes.
   const rawBody = await req.text()
