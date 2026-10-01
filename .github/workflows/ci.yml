@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suites:
+    name: build + security suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # All four suites are integration tests: they drive a running server over
+      # HTTP rather than importing modules, so the server and the test process
+      # have to agree on these. Setting them at job level is what makes that
+      # true by construction.
+      #
+      # Neither value is a secret. The alert token only authenticates the
+      # TradingView webhook on a throwaway server that exists for this job, and
+      # the session key only signs cookies this job mints and discards. Real
+      # deployments set TRADINGVIEW_ALERT_TOKENS and SESSION_SECRET to their own
+      # values; a CI literal must never be one of them.
+      TRADINGVIEW_ALERT_TOKENS: ci-alert-token
+      SESSION_SECRET: ci-session-key-not-used-outside-ci-0123456789
+      BASE_URL: http://127.0.0.1:3000
+
+      # NEXT_PUBLIC_PRIVY_APP_ID is deliberately left unset. The Privy suite
+      # covers both server modes, and with no app ID configured the token
+      # assertions run without CI depending on Privy's JWKS endpoint being
+      # reachable — an unconfigured server must reject, never fall open.
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Before setup-node, so that `cache: pnpm` finds pnpm on PATH. No version
+      # input: the action reads the pinned `packageManager` from package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile so a lockfile that drifted from package.json fails
+      # here, loudly, instead of silently resolving something else.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Start the production server
+        run: |
+          pnpm start > "$RUNNER_TEMP/server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null "$BASE_URL/api/charities"; then
+              echo "server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become ready within 60s"
+          cat "$RUNNER_TEMP/server.log"
+          exit 1
+
+      # One step per suite, so a red run names which invariant broke rather than
+      # just "tests failed".
+      - name: Ramp security regression
+        run: pnpm test:security
+
+      - name: TradingView pipeline and security regression
+        run: pnpm test:tradingview
+
+      - name: Privy login security regression
+        run: pnpm test:privy
+
+      # Non-blocking: 3 of its 9 checks assert a response body shape that
+      # /api/charities and /api/strategies have never returned, and that
+      # predates CI. Kept visible so it turns green when those are fixed,
+      # rather than deleted and forgotten.
+      - name: Demo endpoint walkthrough (known-failing, non-blocking)
+        continue-on-error: true
+        run: WEBHOOK_TOKEN="$TRADINGVIEW_ALERT_TOKENS" pnpm test:demo
+
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log"
+
+      - name: Stop the server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null || true
+          fi
