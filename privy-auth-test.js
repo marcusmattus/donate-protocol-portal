@@ -123,6 +123,11 @@ async function run() {
     forged.status === 401 || forged.status === 503,
     `got ${forged.status}`
   )
+  check(
+    "a rejected token reports no sign-up outcome",
+    !/"isNewAccount"\s*:\s*(true|false)/.test(forged.raw),
+    "a rejected exchange disclosed isNewAccount"
+  )
   check("forged token issues no session cookie", !setCookieOf(forged).includes(`${SESSION_COOKIE}=ey`), setCookieOf(forged).slice(0, 80))
 
   const expired = await req("POST", "/api/auth/privy", {
@@ -212,6 +217,23 @@ async function run() {
       JSON.stringify(anon.body?.connection?.userId)
     )
 
+    // ── Sign-up vs sign-in ──────────────────────────────────────────
+    // A session alone must not manufacture an account record. Only a verified
+    // Privy token exchange may do that, and this suite cannot mint one of
+    // those — which is the point: if holding a cookie were enough to appear as
+    // a signed-up account, that would be the bug.
+    check(
+      "a minted session for an unseen DID reports no account",
+      session.body?.account === null || session.body?.account === undefined,
+      JSON.stringify(session.body?.account)
+    )
+    const reread = await req("GET", "/api/auth/privy", { headers: { cookie } })
+    check(
+      "reading the session repeatedly still creates no account",
+      reread.body?.account === null || reread.body?.account === undefined,
+      JSON.stringify(reread.body?.account)
+    )
+
     const tampered = `${SESSION_COOKIE}=${good.slice(0, -4)}AAAA`
     const tamperRes = await req("GET", "/api/auth/privy", { headers: { cookie: tampered } })
     check(
@@ -245,6 +267,49 @@ async function run() {
     "login page never ships the session secret",
     !/SESSION_SECRET\s*[:=]\s*["'][^"']{8,}/.test(loginHtml),
     "a SESSION_SECRET value appears in the login page HTML"
+  )
+
+  const signupPage = await fetch(`${BASE_URL}/signup`)
+  const signupHtml = await signupPage.text()
+  check("signup page renders", signupPage.status === 200, `got ${signupPage.status}`)
+  check(
+    "signup page never ships the app secret",
+    !/PRIVY_APP_SECRET|privy_app_secret_/.test(signupHtml),
+    "an app-secret reference appears in the signup page HTML"
+  )
+  check(
+    "signup page offers no password field",
+    !/type=["']password["']/.test(signupHtml),
+    "the Privy signup page is collecting a password"
+  )
+  check(
+    "signup page links to sign-in",
+    /href="\/login"/.test(signupHtml),
+    "no /login link on the signup page"
+  )
+
+  // ── Repo hygiene ──────────────────────────────────────────────────
+  // A Privy app secret was once committed to this repo in eight files. This
+  // asserts none is present now, so CI fails rather than a reviewer noticing.
+  console.log("— repo hygiene —")
+  const { execSync } = require("child_process")
+  let tracked = ""
+  let scanned = false
+  try {
+    tracked = execSync("git grep -I -l -E 'privy_app_secret_[A-Za-z0-9]{20,}' -- . || true", {
+      encoding: "utf8",
+      cwd: __dirname,
+    }).trim()
+    scanned = true
+  } catch (e) {
+    // Fail the assertion rather than pass silently: an unrunnable scan is not
+    // evidence of a clean tree.
+    tracked = `scan did not run: ${e instanceof Error ? e.message : e}`
+  }
+  check(
+    "no tracked file contains a Privy app secret",
+    scanned && tracked === "",
+    tracked ? `secret-shaped value in: ${tracked.split("\n").join(", ")}` : "scan did not run"
   )
 
   console.log("\n" + "=".repeat(64))

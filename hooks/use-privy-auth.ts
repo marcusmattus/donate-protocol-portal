@@ -13,6 +13,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * session while our cookie has expired — so both are exposed rather than
  * collapsed into one boolean.
  *
+ * Sign-up and sign-in are the same Privy call. Which one happened is reported
+ * by the server as `isNewAccount` — Privy's own `useLogin({onComplete})` exposes
+ * an `isNewUser` flag, but it comes from the browser, so it is not what the
+ * routing decision reads.
+ *
  * MUST be rendered inside PrivyWalletProvider, which only mounts the real
  * PrivyProvider when an app id is configured. `usePrivy()` throws outside it,
  * so callers gate on `isPrivyConfigured()` at the *component* boundary and
@@ -35,6 +40,12 @@ export interface PrivyAuthState {
   userId: string | null
   email: string | null
   walletAddress: string | null
+  /**
+   * Whether the verified exchange created the account, per the server.
+   * null until an exchange completes — never defaulted to false, because
+   * "not known yet" and "returning user" are different states.
+   */
+  isNewAccount: boolean | null
   error: string | null
   login: () => void
   logout: () => Promise<void>
@@ -46,6 +57,7 @@ export function usePrivyAuth(): PrivyAuthState {
 
   const [serverSession, setServerSession] = useState<ServerSessionState>('unknown')
   const [serverUserId, setServerUserId] = useState<string | null>(null)
+  const [isNewAccount, setIsNewAccount] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** Guards against two exchanges racing on a double render. */
   const exchanging = useRef(false)
@@ -78,6 +90,7 @@ export function usePrivyAuth(): PrivyAuthState {
         return
       }
       setServerUserId(body.user?.userId ?? null)
+      setIsNewAccount(typeof body.isNewAccount === 'boolean' ? body.isNewAccount : null)
       setServerSession('active')
     } catch (e) {
       setServerSession('error')
@@ -96,6 +109,7 @@ export function usePrivyAuth(): PrivyAuthState {
     } else if (serverSession !== 'none') {
       setServerSession('none')
       setServerUserId(null)
+      setIsNewAccount(null)
     }
   }, [ready, authenticated, serverSession, exchange])
 
@@ -105,6 +119,7 @@ export function usePrivyAuth(): PrivyAuthState {
     await fetch('/api/auth/privy', { method: 'DELETE' }).catch(() => {})
     setServerSession('none')
     setServerUserId(null)
+    setIsNewAccount(null)
     await privyLogout()
   }, [privyLogout])
 
@@ -115,6 +130,7 @@ export function usePrivyAuth(): PrivyAuthState {
     userId: serverUserId ?? user?.id ?? null,
     email: typeof user?.email?.address === 'string' ? user.email.address : null,
     walletAddress: user?.wallet?.address ?? null,
+    isNewAccount,
     error,
     login,
     logout,

@@ -294,7 +294,7 @@ NEXT_PUBLIC_SOLANA_RPC=https://api.devnet.solana.com
 
 # Privy.io
 NEXT_PUBLIC_PRIVY_APP_ID=cmpa0jh2w00130djxvklequ5w
-PRIVY_APP_SECRET=x1ErzXRYbNxQbU5TUey6pzu1TqWiWMhTsXJx5Y3CfFwsJV2MmeDbiH9u51uMGeWifixCHET9mad2ps7AjUgp7ww
+PRIVY_APP_SECRET=rotated-see-README-not-required-by-this-app
 
 # TradingView
 TRADINGVIEW_WEBHOOK_URL=https://api.demo.com/webhooks/tradingview/demo123

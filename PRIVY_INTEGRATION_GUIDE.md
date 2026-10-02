@@ -10,7 +10,7 @@ This implementation adds **Privy.io** wallet infrastructure to the Donate Protoc
 
 ```env
 NEXT_PUBLIC_PRIVY_APP_ID=cmpa0jh2w00130djxvklequ5w
-PRIVY_APP_SECRET=x1ErzXRYbNxQbU5TUey6pzu1TqWiWMhTsXJx5Y3CfFwsJV2MmeDbiH9u51uMGeWifixCHET9mad2ps7AjUgp7ww
+PRIVY_APP_SECRET=rotated-see-README-not-required-by-this-app
 NEXT_PUBLIC_SOLANA_RPC=https://api.devnet.solana.com
 ```
 

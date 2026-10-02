@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Outfit, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
 import { PrivyWalletProvider } from '@/components/providers/privy-provider'
+import { PRIVY_APP_ID, PRIVY_CLIENT_ID } from '@/lib/privy/config'
 import { SolanaWalletProvider } from '@/lib/solana-provider'
 import './globals.css'
 
@@ -79,7 +80,7 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} ${outfit.variable} ${spaceGrotesk.variable} bg-background`}
     >
       <body className="antialiased">
-        <PrivyWalletProvider>
+        <PrivyWalletProvider appId={PRIVY_APP_ID} clientId={PRIVY_CLIENT_ID}>
           <SolanaWalletProvider>
             <Providers>{children}</Providers>
           </SolanaWalletProvider>

@@ -8,6 +8,7 @@ import {
   sessionFromRequest,
 } from "@/lib/privy/session"
 import { isPrivyConfigured } from "@/lib/privy/config"
+import { describeAccount, findAccount, recordAuthentication } from "@/lib/privy/accounts"
 import * as audit from "@/lib/pipeline/audit"
 
 /**
@@ -20,6 +21,11 @@ import * as audit from "@/lib/pipeline/audit"
  * The client holds the Privy token; the server holds a session derived from it
  * only after verifying the signature against Privy's JWKS. A login that the
  * server never verified is a UI state, not a login.
+ *
+ * Sign-up and sign-in share this one endpoint because they share one Privy
+ * flow. Which of the two happened is decided here, by whether the server has
+ * seen the DID before (lib/privy/accounts.ts) — never by what the client says
+ * it was trying to do.
  */
 
 export async function POST(req: NextRequest) {
@@ -76,13 +82,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "could not mint a session" }, { status: 500 })
   }
 
+  // Only now — after the signature verified — does this count as an account.
+  const { isNewAccount, account } = recordAuthentication(result.identity.userId)
+
   audit.append({
     correlationId,
     stage: "tradingview.oauth",
     outcome: "ok",
     userId: result.identity.userId,
-    summary: "Privy login verified and session issued",
+    summary: isNewAccount
+      ? "Privy sign-up verified: account created and session issued"
+      : "Privy sign-in verified: session issued",
     detail: {
+      isNewAccount,
+      accountCreatedAt: account.createdAt,
       privyTokenExpiresAt: result.identity.expiresAt,
       sessionTtlSec: session.maxAge,
     },
@@ -91,6 +104,9 @@ export async function POST(req: NextRequest) {
   const response = NextResponse.json({
     ok: true,
     user: { userId: result.identity.userId },
+    // What actually happened, as opposed to which page the user started on.
+    isNewAccount,
+    account: describeAccount(account),
     expiresInSec: session.maxAge,
     correlationId,
   })
@@ -100,11 +116,15 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const session = await sessionFromRequest(req)
+  // Deliberately a read: a session alone never mints an account record, so a
+  // cookie cannot be used to manufacture one.
+  const account = session ? findAccount(session.userId) : null
   return NextResponse.json({
     authenticated: Boolean(session),
     privyConfigured: isPrivyConfigured(),
     sessionConfigured: isSessionConfigured(),
     user: session ? { userId: session.userId } : null,
+    account: account ? describeAccount(account) : null,
     expiresAt: session?.expiresAt ?? null,
   })
 }
