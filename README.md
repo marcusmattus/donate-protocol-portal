@@ -132,8 +132,41 @@ context rather than on an inlined env var — which also removes a crash where t
 provider did not mount but client code still called `usePrivy()`.
 
 ```bash
-npm run test:privy   # 36 assertions against a running server
+npm run test:privy   # 44 assertions against a running server
 ```
+
+### Exchange connections
+
+Exchange API credentials are stored sealed, scoped to the signed-in user, and
+revocable. `POST /api/exchanges` seals the key, secret and (where the exchange
+issues one) passphrase; `GET` returns a masked view; `DELETE ?id=` revokes and
+drops the sealed material rather than flagging it.
+
+Sealing lives in `lib/exchanges/crypto.ts` and is **not**
+`lib/wallet-encryption.ts`, which falls back to a key committed in this repo and
+derives its AES key by `padEnd(32, "0")` — padding is not a KDF. The credential
+path instead uses HKDF-SHA256 with a random per-record salt, AES-256-GCM with a
+12-byte IV and a retained auth tag, and binds user + record + exchange + field
+into both the HKDF `info` and the GCM AAD. A ciphertext therefore cannot be
+replayed as another user's record, or as a different field of the same record,
+even by someone holding the master key.
+
+```bash
+EXCHANGE_ENCRYPTION_KEY=...   # 32+ chars; no fallback, unset means 503
+npm run test:exchange-crypto  # 22 assertions, no server needed
+npm run test:exchange         # 27 assertions against a running server
+```
+
+Three deliberate properties: every verb needs a verified session (`requireUserId`,
+not the demo-fallback helper, so a live secret is never filed under a shared demo
+identity); an unknown id and someone else's id get the same 404, so revocation
+cannot be used to probe for other users' connections; and storing a credential
+is not permission to trade — nothing places an order, and execution would still
+pass the Risk Engine and the user's own policy.
+
+Connections are in-memory, like the other stores here, so they do not survive a
+restart. For credentials that fails safe, and the accessor surface is narrow so
+the Map can become a table without the sealing boundary moving.
 
 The suite covers what matters: forged, unsigned, expired, wrong-audience and
 HS256-where-ES256-is-required tokens are all rejected and issue no cookie;

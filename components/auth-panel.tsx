@@ -24,7 +24,14 @@ export type AuthMode = "signup" | "signin"
  *
  * Rendered only when Privy is configured; see the note in the page components.
  */
-export function AuthPanel({ mode }: { mode: AuthMode }) {
+export function AuthPanel({
+  mode,
+  defaultNext = "/dashboard",
+}: {
+  mode: AuthMode
+  /** Where to land when no ?next= is given. */
+  defaultNext?: string
+}) {
   const auth = usePrivyAuth()
   const router = useRouter()
   const params = useSearchParams()
@@ -37,13 +44,17 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   // treats them as the demo user.
   useEffect(() => {
     if (auth.serverSession !== "active") return
-    const destination = next && next.startsWith("/") ? next : "/dashboard"
+    // Only same-origin paths, so ?next= cannot be used to bounce someone to
+    // another site straight after a successful login. "//evil.com" is a
+    // protocol-relative URL, not a local path, so it has to be excluded too.
+    const destination =
+      next && next.startsWith("/") && !next.startsWith("//") ? next : defaultNext
     // A beat on a new account, so "account created" is readable rather than a
     // flash. Returning users get no artificial delay.
     const delay = auth.isNewAccount ? 900 : 0
     const timer = setTimeout(() => router.replace(destination), delay)
     return () => clearTimeout(timer)
-  }, [auth.serverSession, auth.isNewAccount, next, router])
+  }, [auth.serverSession, auth.isNewAccount, next, defaultNext, router])
 
   if (!auth.ready) {
     return (

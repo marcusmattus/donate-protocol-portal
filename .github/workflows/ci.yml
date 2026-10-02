@@ -31,6 +31,10 @@ jobs:
       # values; a CI literal must never be one of them.
       TRADINGVIEW_ALERT_TOKENS: ci-alert-token
       SESSION_SECRET: ci-session-key-not-used-outside-ci-0123456789
+      # Seals only the exchange credentials this job creates and throws away, so
+      # the exchange suite exercises the storing path rather than the 503 refusal.
+      # A real deployment sets its own; this literal must never be one.
+      EXCHANGE_ENCRYPTION_KEY: ci-exchange-sealing-key-not-used-outside-ci-0123456789
       BASE_URL: http://127.0.0.1:3000
 
       # NEXT_PUBLIC_PRIVY_APP_ID is deliberately left unset. The Privy suite
@@ -54,6 +58,11 @@ jobs:
       # here, loudly, instead of silently resolving something else.
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      # No server needed: this is the only place the sealing boundary's internals
+      # are checked, so it runs before the slow steps.
+      - name: Exchange credential sealing (unit)
+        run: pnpm test:exchange-crypto
 
       - name: Build
         run: pnpm build
@@ -83,6 +92,9 @@ jobs:
 
       - name: Privy login security regression
         run: pnpm test:privy
+
+      - name: Exchange connection security regression
+        run: pnpm test:exchange
 
       # Non-blocking: 3 of its 9 checks assert a response body shape that
       # /api/charities and /api/strategies have never returned, and that
