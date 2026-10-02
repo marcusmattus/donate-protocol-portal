@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { isPrivyConfigured } from '@/lib/privy/config';
+import { useIsPrivyConfigured } from '@/components/providers/privy-provider';
 import { usePrivyAuth } from '@/hooks/use-privy-auth';
 
 const mono = { fontFamily: 'var(--font-jetbrains), monospace' } as const;
@@ -13,9 +13,14 @@ const mono = { fontFamily: 'var(--font-jetbrains), monospace' } as const;
  * outside a mounted PrivyProvider, and the provider is a no-op without an app
  * id — so the unconfigured case renders a link to /login, which explains what
  * to set, instead of calling the hook.
+ *
+ * The split reads the provider's own context rather than an env var: in client
+ * code `NEXT_PUBLIC_*` is a build-time constant, so an env check here could
+ * disagree with whether the provider actually mounted and call the hook outside
+ * it.
  */
 export function PrivyLoginButton() {
-  if (!isPrivyConfigured()) {
+  if (!useIsPrivyConfigured()) {
     return (
       <Link
         href="/login"

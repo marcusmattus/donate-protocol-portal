@@ -54,6 +54,7 @@ export function NavDark() {
           <Link href="/transparency" className="hover:text-teal-400 transition-colors">Security</Link>
           <Link href="/onboard" className="hover:text-teal-400 transition-colors">Onboard Charity</Link>
           <Link href="/login" className="hover:text-teal-400 transition-colors">Sign In</Link>
+          <Link href="/signup" className="text-teal-400 hover:text-teal-300 transition-colors">Sign Up</Link>
         </div>
       </div>
 

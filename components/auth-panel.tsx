@@ -7,21 +7,43 @@ import { usePrivyAuth } from "@/hooks/use-privy-auth"
 
 const mono = { fontFamily: "var(--font-jetbrains), monospace" } as const
 
-/** Rendered only when Privy is configured — see the note in page.tsx. */
-export function PrivyLoginPanel() {
+export type AuthMode = "signup" | "signin"
+
+/**
+ * The sign-up and sign-in panel.
+ *
+ * One component for both, because Privy has one flow: `login()` creates an
+ * account for a new user and signs in an existing one. Two components would
+ * mean two copies of the exchange-and-redirect logic drifting apart over a
+ * difference that is only ever copy and a destination.
+ *
+ * `mode` sets what the user was *trying* to do. What actually happened comes
+ * back from the server as `isNewAccount`, and the two can disagree in both
+ * directions — someone can land on /signup already having an account, or on
+ * /login without one. The panel says so rather than pretending otherwise.
+ *
+ * Rendered only when Privy is configured; see the note in the page components.
+ */
+export function AuthPanel({ mode }: { mode: AuthMode }) {
   const auth = usePrivyAuth()
   const router = useRouter()
   const params = useSearchParams()
   const next = params.get("next")
 
-  // Only redirect once the *server* has a verified session. Redirecting on the
-  // client's `authenticated` alone would land the user on a page that still
+  const isSignup = mode === "signup"
+
+  // Redirect only once the *server* holds a verified session. Redirecting on
+  // the client's `authenticated` alone would land the user on a page that still
   // treats them as the demo user.
   useEffect(() => {
-    if (auth.serverSession === "active") {
-      router.replace(next && next.startsWith("/") ? next : "/dashboard")
-    }
-  }, [auth.serverSession, next, router])
+    if (auth.serverSession !== "active") return
+    const destination = next && next.startsWith("/") ? next : "/dashboard"
+    // A beat on a new account, so "account created" is readable rather than a
+    // flash. Returning users get no artificial delay.
+    const delay = auth.isNewAccount ? 900 : 0
+    const timer = setTimeout(() => router.replace(destination), delay)
+    return () => clearTimeout(timer)
+  }, [auth.serverSession, auth.isNewAccount, next, router])
 
   if (!auth.ready) {
     return (
@@ -41,24 +63,18 @@ export function PrivyLoginPanel() {
       {auth.authenticated ? (
         <div className="space-y-3">
           <dl className="text-[11px] space-y-1.5">
-            {auth.email && (
-              <Row label="Email" value={auth.email} />
-            )}
+            {auth.email && <Row label="Email" value={auth.email} />}
             {auth.walletAddress && (
               <Row
                 label="Wallet"
                 value={`${auth.walletAddress.slice(0, 6)}…${auth.walletAddress.slice(-4)}`}
               />
             )}
-            {auth.userId && (
-              <Row label="ID" value={`${auth.userId.slice(0, 18)}…`} />
-            )}
+            {auth.userId && <Row label="ID" value={`${auth.userId.slice(0, 18)}…`} />}
           </dl>
 
           {auth.serverSession === "active" ? (
-            <p className="text-[10px] text-lime-400">
-              Session verified. Taking you to the dashboard…
-            </p>
+            <Outcome isSignup={isSignup} isNewAccount={auth.isNewAccount} />
           ) : auth.serverSession === "syncing" ? (
             <p className="text-[10px] text-teal-300">Verifying with the server…</p>
           ) : (
@@ -89,22 +105,60 @@ export function PrivyLoginPanel() {
             onClick={auth.login}
             className="w-full py-3 bg-teal-400 text-slate-950 font-bold uppercase text-[11px] hover:bg-teal-300"
           >
-            Continue with Privy
+            {isSignup ? "Create account with Privy" : "Continue with Privy"}
           </button>
           <p className="text-[10px] text-slate-600 leading-relaxed">
-            Opens Privy&apos;s own sign-in. Your credentials go to Privy, never to this app.
+            Opens Privy&apos;s own {isSignup ? "sign-up" : "sign-in"}. Your credentials go to Privy,
+            never to this app — there is no password here to steal.
           </p>
           {auth.error && <p className="text-[10px] text-rose-400">{auth.error}</p>}
         </div>
       )}
 
-      <div className="pt-2 border-t border-slate-800">
+      <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-3">
         <Link href="/" className="text-[10px] uppercase text-slate-500 hover:text-teal-300">
-          ← Back home
+          ← Home
         </Link>
+        {isSignup ? (
+          <Link href="/login" className="text-[10px] uppercase text-slate-500 hover:text-teal-300">
+            Have an account? Sign in
+          </Link>
+        ) : (
+          <Link href="/signup" className="text-[10px] uppercase text-slate-500 hover:text-teal-300">
+            New here? Create account
+          </Link>
+        )}
       </div>
     </div>
   )
+}
+
+/**
+ * What the server says happened, which is not always what the page was for.
+ *
+ * `isNewAccount === null` means the exchange reported nothing either way; the
+ * panel stays vague rather than guessing, since claiming "account created" to a
+ * returning user is worse than a neutral sentence.
+ */
+function Outcome({ isSignup, isNewAccount }: { isSignup: boolean; isNewAccount: boolean | null }) {
+  if (isNewAccount === true) {
+    return (
+      <p className="text-[10px] text-lime-400 leading-relaxed">
+        Account created and verified{isSignup ? "" : " — you were new, so signing in made one"}.
+        Taking you in…
+      </p>
+    )
+  }
+  if (isNewAccount === false) {
+    return (
+      <p className="text-[10px] text-lime-400 leading-relaxed">
+        {isSignup
+          ? "You already had an account — signed you in instead. Taking you in…"
+          : "Welcome back. Session verified, taking you in…"}
+      </p>
+    )
+  }
+  return <p className="text-[10px] text-lime-400">Session verified. Taking you in…</p>
 }
 
 function Row({ label, value }: { label: string; value: string }) {

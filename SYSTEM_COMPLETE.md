@@ -51,7 +51,7 @@ npm run dev
 
 **Credentials already configured:**
 - Privy App ID: `cmpa0jh2w00130djxvklequ5w`
-- Privy Secret: `x1ErzXRYbNxQbU5TUey6pzu1TqWiWMhTsXJx5Y3CfFwsJV2MmeDbiH9u51uMGeWifixCHET9mad2ps7AjUgp7ww`
+- Privy Secret: `rotated-see-README-not-required-by-this-app`
 
 ### 3. **Agent Dashboard** (`/dashboard`)
 - Portfolio tracking

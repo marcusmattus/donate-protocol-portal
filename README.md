@@ -101,8 +101,38 @@ Verification uses `jose` against Privy's public JWKS rather than
 runtime. `PRIVY_APP_SECRET` is **not** required: it is for Privy's management
 API, not for validating a token.
 
+> **If you have a `PRIVY_APP_SECRET` anywhere in your deployment, delete it.**
+> This app never reads it, so nothing breaks, and one less copy of a credential
+> is one less place it can leak. An app secret was previously committed to this
+> repository in eight documentation files; it has been removed from the working
+> tree, but **git history still contains it**, so that value must be treated as
+> public and rotated in the Privy dashboard. `npm run test:privy` now fails if a
+> secret-shaped literal reappears in a tracked file.
+
+### Sign up and sign in
+
+Privy has one authentication call: `login()` creates an account for a new user
+and signs in an existing one. So `/signup` and `/login` share a single component
+(`components/auth-panel.tsx`) and differ only in copy; which of the two actually
+happened is decided **server-side**, by whether `lib/privy/accounts.ts` has seen
+the DID before. Privy's own `isNewUser` flag is reported by the browser, which is
+why the routing does not read it.
+
+That record is for greeting and routing only, never authorization — it is
+in-memory, so a restart makes a returning user look new, and that is tolerable
+precisely because nothing is gated on it. Only a verified token exchange writes
+to it; reading a session never creates an account.
+
+Both pages are `force-dynamic`. As static pages the "is Privy configured" gate
+was evaluated once at build time and frozen into the HTML, so a deployment that
+supplied `NEXT_PUBLIC_PRIVY_APP_ID` only at runtime served "Privy is not
+configured" permanently. The root layout now passes the app id into
+`PrivyWalletProvider` as a prop, and client components gate on that provider's
+context rather than on an inlined env var — which also removes a crash where the
+provider did not mount but client code still called `usePrivy()`.
+
 ```bash
-npm run test:privy   # 28 assertions against a running server
+npm run test:privy   # 36 assertions against a running server
 ```
 
 The suite covers what matters: forged, unsigned, expired, wrong-audience and
