@@ -14,7 +14,9 @@
     "test:privy": "node privy-auth-test.js",
     "tv:reconcile": "node scripts/tv-reconcile.mjs",
     "bot:telegram": "node telegram-bot.js",
-    "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -H \"x-webhook-token: ${WEBHOOK_TOKEN:-demo123}\" -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'"
+    "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -H \"x-webhook-token: ${WEBHOOK_TOKEN:-demo123}\" -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'",
+    "test:exchange": "node exchange-security-test.js",
+    "test:exchange-crypto": "node --experimental-strip-types exchange-crypto-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

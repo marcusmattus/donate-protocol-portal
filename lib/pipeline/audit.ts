@@ -18,6 +18,10 @@ export type AuditStage =
   | "tradingview.mcp_call"
   | "tradingview.oauth"
   | "tradingview.webhook"
+  // Exchange credential lifecycle (store / revoke). Its own stage rather than
+  // reusing tradingview.oauth, so the ledger does not claim a TradingView
+  // authorization happened when someone saved an exchange key.
+  | "exchange.credential"
   | "market_intelligence"
   | "strategy"
   | "signal_normalized"
