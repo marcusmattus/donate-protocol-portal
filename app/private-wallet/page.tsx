@@ -19,7 +19,6 @@ export default function PrivateWalletPage() {
   const [apiKey, setApiKey] = useState("")
   const [apiSecret, setApiSecret] = useState("")
   const [apiPassphrase, setApiPassphrase] = useState("")
-  const [connectingExchange, setConnectingExchange] = useState(false)
 
   // Mock data
   const [wallets, setWallets] = useState([
@@ -50,71 +49,68 @@ export default function PrivateWalletPage() {
     },
   ])
 
-  // Check auth on mount
+  // Check auth on mount.
+  //
+  // This used to be `localStorage.getItem("authToken")` — any truthy string let
+  // you in, so the gate was decoration: typing
+  // localStorage.setItem('authToken','x') in the console opened the wallet area.
+  // It now asks the server whether it holds a session it verified against
+  // Privy's JWKS, which is a question the browser cannot answer for itself.
+  //
+  // This is still only a UI gate. Anything that must actually be protected is
+  // protected server-side, by the route reading the session cookie.
   useEffect(() => {
-    const token = localStorage.getItem("authToken")
-    if (!token) {
-      router.push("/private-wallet-login")
-    } else {
-      setAuthenticated(true)
-      setLoading(false)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/auth/privy", { cache: "no-store" })
+        const body = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (body?.authenticated === true) {
+          setAuthenticated(true)
+          setLoading(false)
+        } else {
+          router.replace("/private-wallet-login?next=/private-wallet")
+        }
+      } catch {
+        // A failed check is not an authenticated one: send them to sign in
+        // rather than falling open on a network blip.
+        if (!cancelled) router.replace("/private-wallet-login?next=/private-wallet")
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [router])
 
-  const handleConnectExchange = async (e: React.FormEvent) => {
+  /**
+   * Exchange connection is not wired up.
+   *
+   * This posted apiKey / apiSecret / apiPassphrase to `/api/auth/exchange-login`,
+   * which has never existed. The 404's HTML broke `response.json()`, so the form
+   * reported "Network error. Please try again." while the panel above it claimed
+   * the credentials were "encrypted and stored securely". Nothing was stored, and
+   * nothing was encrypted.
+   *
+   * Sending exchange secrets to a route that does not exist is worse than doing
+   * nothing: it puts live API keys on the wire and in whatever logs answer the
+   * request, in exchange for no stored connection. So the submit no longer sends
+   * anything, and the UI says what is actually true.
+   *
+   * Storing these properly is a real feature — encryption at rest keyed per user,
+   * scoping to the session identity, and a revocation path — not a line of glue.
+   */
+  const handleConnectExchange = (e: React.FormEvent) => {
     e.preventDefault()
-    setConnectingExchange(true)
-    setError(null)
-
-    try {
-      const response = await fetch("/api/auth/exchange-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: "user_demo_001",
-          exchangeName: selectedExchange,
-          apiKey,
-          apiSecret,
-          apiPassphrase,
-        }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        setError(data.error || "Connection failed")
-        return
-      }
-
-      const data = await response.json()
-
-      // Add to list
-      setExchanges([
-        ...exchanges,
-        {
-          id: data.exchangeConnection.id,
-          name:
-            selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1),
-          status: "Connected",
-          autoLogin: true,
-          autoTrade: false,
-          lastLogin: "Just now",
-        },
-      ])
-
-      // Clear form
-      setApiKey("")
-      setApiSecret("")
-      setApiPassphrase("")
-      setExchangeTab("list")
-    } catch (err) {
-      setError("Network error. Please try again.")
-    } finally {
-      setConnectingExchange(false)
-    }
+    setError(
+      "Exchange connection is not available yet. Nothing was sent — this form had no working endpoint, so your API keys stay in the browser."
+    )
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken")
+  const handleLogout = async () => {
+    // Clear the server session, not a localStorage flag — removing the flag
+    // left the real session cookie alive, so "log out" logged nobody out.
+    await fetch("/api/auth/privy", { method: "DELETE" }).catch(() => {})
     router.push("/")
   }
 
@@ -386,15 +382,15 @@ export default function PrivateWalletPage() {
                       )}
 
                       <div className="bg-slate-900/50 border border-slate-800 rounded p-3 text-[10px] text-slate-400">
-                        ℹ️ Your credentials are encrypted and stored securely. Auto-login is enabled by default.
+                        ⚠️ Not available yet — this form has no backend. Nothing you type here is
+                        sent, stored or encrypted. Do not treat it as a place to save live API keys.
                       </div>
 
                       <button
                         type="submit"
-                        disabled={connectingExchange}
-                        className="w-full px-4 py-2 text-[10px] uppercase font-bold tracking-widest border border-lime-400 text-lime-400 hover:bg-lime-400 hover:text-slate-950 transition disabled:opacity-50"
+                        className="w-full px-4 py-2 text-[10px] uppercase font-bold tracking-widest border border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-300 transition"
                       >
-                        {connectingExchange ? "Connecting..." : "Connect Exchange 🔗"}
+                        Connect Exchange — unavailable
                       </button>
                     </form>
                   </div>
