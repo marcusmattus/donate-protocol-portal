@@ -288,6 +288,44 @@ async function run() {
     "no /login link on the signup page"
   )
 
+  // ── Private wallet access ─────────────────────────────────────────
+  // This page was an email/password form posting to endpoints that never
+  // existed, and the wallet area behind it gated on a localStorage flag.
+  console.log("— private wallet access —")
+  const pwLogin = await fetch(`${BASE_URL}/private-wallet-login`)
+  const pwHtml = await pwLogin.text()
+  check("private wallet login renders", pwLogin.status === 200, `got ${pwLogin.status}`)
+  check(
+    "private wallet login collects no password",
+    !/type=["']password["']/.test(pwHtml),
+    "a password field is still on the private wallet login page"
+  )
+  check(
+    "private wallet login targets no dead auth endpoint",
+    !/\/api\/auth\/(login|signup|exchange-login)/.test(pwHtml),
+    "the page still references an endpoint that does not exist"
+  )
+
+  // The routes the old page posted to must stay absent, so a future edit
+  // pointing a form back at them fails here rather than in production.
+  for (const dead of ["/api/auth/login", "/api/auth/signup", "/api/auth/exchange-login"]) {
+    const res = await req("POST", dead, { email: "x@example.com", password: "x" })
+    check(`${dead} does not exist`, res.status === 404, `got ${res.status}`)
+  }
+
+  const pwArea = await fetch(`${BASE_URL}/private-wallet`)
+  const pwAreaHtml = await pwArea.text()
+  check(
+    "wallet area no longer gates on a localStorage token",
+    !/localStorage\.getItem\(\s*["']authToken["']\s*\)/.test(pwAreaHtml),
+    "the localStorage gate is still shipped to the browser"
+  )
+  check(
+    "wallet area claims no encryption it does not do",
+    !/credentials are encrypted and stored securely/i.test(pwAreaHtml),
+    "the false 'encrypted and stored securely' claim is still shown"
+  )
+
   // ── Repo hygiene ──────────────────────────────────────────────────
   // A Privy app secret was once committed to this repo in eight files. This
   // asserts none is present now, so CI fails rather than a reviewer noticing.

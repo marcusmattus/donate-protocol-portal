@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -19,7 +19,6 @@ export default function PrivateWalletPage() {
   const [apiKey, setApiKey] = useState("")
   const [apiSecret, setApiSecret] = useState("")
   const [apiPassphrase, setApiPassphrase] = useState("")
-  const [connectingExchange, setConnectingExchange] = useState(false)
 
   // Mock data
   const [wallets, setWallets] = useState([
@@ -39,82 +38,161 @@ export default function PrivateWalletPage() {
     },
   ])
 
-  const [exchanges, setExchanges] = useState([
-    {
-      id: "exchange_1",
-      name: "Kraken",
-      status: "Connected",
-      autoLogin: true,
-      autoTrade: false,
-      lastLogin: "2 hours ago",
-    },
-  ])
+  // Real connections from the server. The previous value here was a hardcoded
+  // "Kraken — Connected — 2 hours ago", which was fiction: nothing had ever been
+  // stored, so the page showed a connection that did not exist.
+  interface ExchangeConnection {
+    id: string
+    exchange: string
+    label: string
+    fingerprint: string
+    hint: string
+    hasPassphrase: boolean
+    createdAt: number
+    lastUsedAt: number | null
+  }
+  const [exchanges, setExchanges] = useState<ExchangeConnection[]>([])
+  const [catalog, setCatalog] = useState<{ id: string; label: string; requiresPassphrase: boolean }[]>([])
+  const [sealingConfigured, setSealingConfigured] = useState<boolean | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  // Check auth on mount
+  // Check auth on mount.
+  //
+  // This used to be `localStorage.getItem("authToken")` — any truthy string let
+  // you in, so the gate was decoration: typing
+  // localStorage.setItem('authToken','x') in the console opened the wallet area.
+  // It now asks the server whether it holds a session it verified against
+  // Privy's JWKS, which is a question the browser cannot answer for itself.
+  //
+  // This is still only a UI gate. Anything that must actually be protected is
+  // protected server-side, by the route reading the session cookie.
   useEffect(() => {
-    const token = localStorage.getItem("authToken")
-    if (!token) {
-      router.push("/private-wallet-login")
-    } else {
-      setAuthenticated(true)
-      setLoading(false)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/auth/privy", { cache: "no-store" })
+        const body = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (body?.authenticated === true) {
+          setAuthenticated(true)
+          setLoading(false)
+        } else {
+          router.replace("/private-wallet-login?next=/private-wallet")
+        }
+      } catch {
+        // A failed check is not an authenticated one: send them to sign in
+        // rather than falling open on a network blip.
+        if (!cancelled) router.replace("/private-wallet-login?next=/private-wallet")
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [router])
 
+  // Connections are loaded only after the session check passes, so an
+  // unauthenticated visitor never even issues the request.
+  const loadConnections = useCallback(async () => {
+    try {
+      const res = await fetch("/api/exchanges", { cache: "no-store" })
+      if (res.status === 401) {
+        router.replace("/private-wallet-login?next=/private-wallet")
+        return
+      }
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body?.error ?? `could not load connections (${res.status})`)
+        return
+      }
+      setExchanges(Array.isArray(body.connections) ? body.connections : [])
+      setCatalog(Array.isArray(body.exchanges) ? body.exchanges : [])
+      setSealingConfigured(Boolean(body.sealingConfigured))
+    } catch {
+      setError("could not load exchange connections")
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (authenticated) void loadConnections()
+  }, [authenticated, loadConnections])
+
+  /**
+   * Store an exchange connection.
+   *
+   * The secrets go straight to the server and are never kept in component state
+   * beyond the inputs; they are cleared as soon as the request succeeds. The
+   * response carries only the masked view, so nothing secret comes back to be
+   * rendered or cached.
+   */
   const handleConnectExchange = async (e: React.FormEvent) => {
     e.preventDefault()
-    setConnectingExchange(true)
+    setConnecting(true)
     setError(null)
+    setNotice(null)
 
     try {
-      const response = await fetch("/api/auth/exchange-login", {
+      const res = await fetch("/api/exchanges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "user_demo_001",
-          exchangeName: selectedExchange,
+          exchange: selectedExchange,
           apiKey,
           apiSecret,
-          apiPassphrase,
+          passphrase: apiPassphrase || null,
         }),
       })
+      const body = await res.json().catch(() => ({}))
 
-      if (!response.ok) {
-        const data = await response.json()
-        setError(data.error || "Connection failed")
+      if (res.status === 401) {
+        router.replace("/private-wallet-login?next=/private-wallet")
+        return
+      }
+      if (!res.ok) {
+        setError(body?.hint ? `${body.error} — ${body.hint}` : body?.error ?? `failed (${res.status})`)
         return
       }
 
-      const data = await response.json()
-
-      // Add to list
-      setExchanges([
-        ...exchanges,
-        {
-          id: data.exchangeConnection.id,
-          name:
-            selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1),
-          status: "Connected",
-          autoLogin: true,
-          autoTrade: false,
-          lastLogin: "Just now",
-        },
-      ])
-
-      // Clear form
+      // Clear the inputs before anything else, so the secrets stop existing in
+      // the page as soon as the server has them.
       setApiKey("")
       setApiSecret("")
       setApiPassphrase("")
+      setNotice(`Connected ${body.connection?.label ?? selectedExchange} (${body.connection?.hint ?? ""})`)
+      await loadConnections()
       setExchangeTab("list")
-    } catch (err) {
-      setError("Network error. Please try again.")
+    } catch {
+      setError("network error while storing the connection")
     } finally {
-      setConnectingExchange(false)
+      setConnecting(false)
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken")
+  const handleRevoke = async (id: string) => {
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/exchanges?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      if (res.status === 401) {
+        router.replace("/private-wallet-login?next=/private-wallet")
+        return
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error ?? `could not revoke (${res.status})`)
+        return
+      }
+      setNotice("Connection revoked.")
+      await loadConnections()
+    } catch {
+      setError("network error while revoking the connection")
+    }
+  }
+
+  const handleLogout = async () => {
+    // Clear the server session, not a localStorage flag — removing the flag
+    // left the real session cookie alive, so "log out" logged nobody out.
+    await fetch("/api/auth/privy", { method: "DELETE" }).catch(() => {})
     router.push("/")
   }
 
@@ -285,30 +363,52 @@ export default function PrivateWalletPage() {
                         </div>
                       )}
 
+                      {notice && (
+                        <div className="mb-4 p-3 bg-lime-500/10 border border-lime-500/30 rounded text-lime-300 text-sm">
+                          {notice}
+                        </div>
+                      )}
+
+                      {sealingConfigured === false && (
+                        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded text-amber-300 text-[11px] leading-relaxed">
+                          Credential storage is not configured on this server, so connecting is
+                          disabled. Set <code>EXCHANGE_ENCRYPTION_KEY</code> (32+ characters) to
+                          enable it. Keys are never stored unencrypted.
+                        </div>
+                      )}
+
                       <div className="space-y-3">
+                        {exchanges.length === 0 && (
+                          <div className="p-4 bg-slate-900/50 border border-slate-800 rounded text-[11px] text-slate-500">
+                            No exchange connections yet.
+                          </div>
+                        )}
                         {exchanges.map((exchange) => (
                           <div
                             key={exchange.id}
                             className="flex justify-between items-center p-4 bg-slate-900/50 border border-slate-800 rounded"
                           >
                             <div>
-                              <div className="font-bold">{exchange.name}</div>
-                              <div className="text-[10px] text-slate-500">
-                                Last login: {exchange.lastLogin}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-[10px]">
-                                {exchange.status === "Connected" ? (
-                                  <span className="text-lime-400">✅ {exchange.status}</span>
-                                ) : (
-                                  <span className="text-red-400">❌ {exchange.status}</span>
-                                )}
-                              </div>
+                              <div className="font-bold">{exchange.label}</div>
+                              {/* The key itself is never sent to the browser —
+                                  only four characters and a keyed fingerprint. */}
                               <div className="text-[10px] text-slate-500 mt-1">
-                                Auto-login: {exchange.autoLogin ? "ON" : "OFF"}
+                                Key {exchange.hint} · {exchange.fingerprint}
+                                {exchange.hasPassphrase ? " · passphrase stored" : ""}
+                              </div>
+                              <div className="text-[10px] text-slate-600">
+                                Added {new Date(exchange.createdAt).toLocaleString()}
+                                {exchange.lastUsedAt
+                                  ? ` · last used ${new Date(exchange.lastUsedAt).toLocaleString()}`
+                                  : " · not used yet"}
                               </div>
                             </div>
+                            <button
+                              onClick={() => void handleRevoke(exchange.id)}
+                              className="px-3 py-1 text-[10px] uppercase font-bold tracking-widest border border-slate-700 text-slate-400 hover:border-rose-500/50 hover:text-rose-300 transition"
+                            >
+                              Revoke
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -338,10 +438,11 @@ export default function PrivateWalletPage() {
                           onChange={(e) => setSelectedExchange(e.target.value)}
                           className="w-full px-4 py-2 bg-slate-900 border border-slate-800 text-white rounded"
                         >
-                          <option value="kraken">Kraken</option>
-                          <option value="binance">Binance</option>
-                          <option value="coinbase">Coinbase</option>
-                          <option value="tradingview">TradingView</option>
+                          {catalog.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -371,7 +472,7 @@ export default function PrivateWalletPage() {
                         />
                       </div>
 
-                      {selectedExchange === "coinbase" && (
+                      {catalog.find((e) => e.id === selectedExchange)?.requiresPassphrase && (
                         <div>
                           <label className="text-[10px] uppercase text-slate-500 font-bold mb-2 block">
                             Passphrase
@@ -386,15 +487,21 @@ export default function PrivateWalletPage() {
                       )}
 
                       <div className="bg-slate-900/50 border border-slate-800 rounded p-3 text-[10px] text-slate-400">
-                        ℹ️ Your credentials are encrypted and stored securely. Auto-login is enabled by default.
+                        🔒 Sealed with AES-256-GCM under a per-record key before storage, scoped to
+                        your account. The key and secret are never returned to the browser again —
+                        only the last four characters and a fingerprint. Revoke at any time.
                       </div>
 
                       <button
                         type="submit"
-                        disabled={connectingExchange}
-                        className="w-full px-4 py-2 text-[10px] uppercase font-bold tracking-widest border border-lime-400 text-lime-400 hover:bg-lime-400 hover:text-slate-950 transition disabled:opacity-50"
+                        disabled={connecting || sealingConfigured === false}
+                        className="w-full px-4 py-2 text-[10px] uppercase font-bold tracking-widest border border-lime-400 text-lime-400 hover:bg-lime-400 hover:text-slate-950 transition disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-lime-400"
                       >
-                        {connectingExchange ? "Connecting..." : "Connect Exchange 🔗"}
+                        {connecting
+                          ? "Storing…"
+                          : sealingConfigured === false
+                          ? "Unavailable — server not configured"
+                          : "Connect Exchange 🔗"}
                       </button>
                     </form>
                   </div>
