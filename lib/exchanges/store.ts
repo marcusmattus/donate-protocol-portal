@@ -21,6 +21,7 @@
 import crypto from "node:crypto"
 import { credentialContext, keyFingerprint, keyHint, open, seal } from "@/lib/exchanges/crypto"
 import { findExchange } from "@/lib/exchanges/catalog"
+import type { ValidationResult } from "@/lib/exchanges/validate"
 
 export interface ExchangeConnectionRecord {
   id: string
@@ -37,6 +38,10 @@ export interface ExchangeConnectionRecord {
   createdAt: number
   revokedAt: number | null
   lastUsedAt: number | null
+  /** Last validation outcome, or null if never checked. Carries no secret. */
+  validation: ValidationResult | null
+  /** When a validation was last *attempted*, for the cooldown. */
+  lastValidationAttemptAt: number | null
 }
 
 /** The only shape that may be serialised to a client. Carries no secret. */
@@ -49,6 +54,7 @@ export interface ExchangeConnectionView {
   hasPassphrase: boolean
   createdAt: number
   lastUsedAt: number | null
+  validation: ValidationResult | null
 }
 
 /** Bounded so a loop of creates cannot grow this without limit. */
@@ -66,6 +72,7 @@ export function describeConnection(record: ExchangeConnectionRecord): ExchangeCo
     hasPassphrase: record.sealedPassphrase !== null,
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
+    validation: record.validation,
   }
 }
 
@@ -120,6 +127,8 @@ export function createConnection(input: NewConnectionInput): ExchangeConnectionR
     createdAt: Date.now(),
     revokedAt: null,
     lastUsedAt: null,
+    validation: null,
+    lastValidationAttemptAt: null,
   }
 
   list.push(record)
@@ -182,6 +191,46 @@ export function openConnection(
   }
   record.lastUsedAt = Date.now()
   return secrets
+}
+
+/**
+ * Record a validation outcome against a connection this user owns.
+ *
+ * Separate from `openConnection` so the store, not the route, decides what a
+ * record may hold: a route cannot write an arbitrary field through this.
+ */
+export function recordValidation(
+  userId: string,
+  id: string,
+  validation: ValidationResult
+): boolean {
+  const record = findConnection(userId, id)
+  if (!record) return false
+  record.validation = validation
+  record.lastValidationAttemptAt = Date.now()
+  return true
+}
+
+/**
+ * Cooldown between validation attempts on one connection.
+ *
+ * Each attempt is an outbound request to a third party, so without this the
+ * endpoint is a small amplifier pointed at an exchange — and exchanges rate
+ * limit by key, so hammering it could get the user's own key throttled.
+ */
+const VALIDATION_COOLDOWN_MS = Math.max(0, Number(process.env.EXCHANGE_VALIDATION_COOLDOWN_MS) || 20_000)
+
+export function validationCooldownRemaining(userId: string, id: string): number {
+  const record = findConnection(userId, id)
+  if (!record?.lastValidationAttemptAt) return 0
+  const elapsed = Date.now() - record.lastValidationAttemptAt
+  return Math.max(0, VALIDATION_COOLDOWN_MS - elapsed)
+}
+
+/** Note an attempt even when it is refused, so a failure cannot be retried hot. */
+export function markValidationAttempt(userId: string, id: string): void {
+  const record = findConnection(userId, id)
+  if (record) record.lastValidationAttemptAt = Date.now()
 }
 
 /** Test seam. Not reachable over HTTP. */

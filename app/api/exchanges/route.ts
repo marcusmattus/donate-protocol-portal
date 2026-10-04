@@ -6,9 +6,15 @@ import {
   ConnectionLimitError,
   createConnection,
   describeConnection,
+  findConnection,
   listConnections,
+  markValidationAttempt,
+  recordValidation,
   revokeConnection,
+  validationCooldownRemaining,
 } from "@/lib/exchanges/store"
+import { openConnection } from "@/lib/exchanges/store"
+import { isValidationEnabled, validateCredentials } from "@/lib/exchanges/validate"
 import * as audit from "@/lib/pipeline/audit"
 
 /**
@@ -29,6 +35,20 @@ import * as audit from "@/lib/pipeline/audit"
  *      are built from `describeConnection`, which has no field that can hold one.
  *   3. **Unavailable sealing is a refusal, not a plaintext write.** With no
  *      master key configured, POST is 503 and stores nothing.
+ *
+ * ## Validation
+ *
+ * POST checks the credential against the exchange unless `validate: false`, and
+ * PUT re-checks a stored one. Two deliberate choices:
+ *
+ *   - **A rejected credential is still stored.** Tempting to refuse it and keep
+ *     the list clean, but the signing is ours: if an adapter were subtly wrong,
+ *     refusing would throw away a working key on our mistake. Storing it with a
+ *     visible `rejected` status is recoverable in both directions — the user can
+ *     retype or revoke — whereas discarding is not.
+ *   - **Validation never gates storage on reachability.** An exchange being down
+ *     or geo-blocking the server says nothing about the credential, so that is
+ *     `unreachable`, the credential is kept, and the user can re-check later.
  */
 
 /** Bounds on submitted values, so a huge body cannot be parked in memory. */
@@ -56,6 +76,7 @@ export async function GET(req: NextRequest) {
     connections: listConnections(userId).map(describeConnection),
     // So the UI can explain an unavailable feature instead of failing on submit.
     sealingConfigured: isSealingConfigured(),
+    validationEnabled: isValidationEnabled(),
     exchanges: EXCHANGES,
   })
 }
@@ -118,6 +139,30 @@ export async function POST(req: NextRequest) {
       passphrase,
     })
 
+    // Validate the sealed copy, not the request body: this exercises the open
+    // path, so a sealing/opening mismatch surfaces here rather than the first
+    // time something needs the credential for real.
+    if (input.validate !== false) {
+      const opened = openConnection(userId, record.id)
+      if (opened) {
+        const validation = await validateCredentials(descriptor.id, opened)
+        recordValidation(userId, record.id, validation)
+        audit.append({
+          correlationId,
+          stage: "exchange.credential",
+          outcome: validation.status === "valid" ? "ok" : "rejected",
+          userId,
+          summary: `exchange credential validation: ${validation.status}`,
+          detail: {
+            exchange: record.exchange,
+            connectionId: record.id,
+            status: validation.status,
+            reason: validation.reason,
+          },
+        })
+      }
+    }
+
     audit.append({
       correlationId,
       stage: "exchange.credential",
@@ -130,7 +175,12 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json(
-      { ok: true, connection: describeConnection(record), correlationId },
+      {
+        ok: true,
+        // Re-describe after validation so the body carries the outcome.
+        connection: describeConnection(findConnection(userId, record.id) ?? record),
+        correlationId,
+      },
       { status: 201 }
     )
   } catch (e) {
@@ -148,6 +198,63 @@ export async function POST(req: NextRequest) {
     // The underlying message could mention the input; it is not forwarded.
     return NextResponse.json({ error: "could not store the connection" }, { status: 500 })
   }
+}
+
+/** Re-check a stored credential against the exchange. */
+export async function PUT(req: NextRequest) {
+  const correlationId = audit.newCorrelationId("exchange_validate")
+
+  const userId = await requireUserId(req)
+  if (!userId) {
+    return NextResponse.json({ error: "sign in to validate an exchange connection" }, { status: 401 })
+  }
+
+  const id = req.nextUrl.searchParams.get("id")
+  if (!id) return badRequest("id is required")
+
+  // Same 404 for unknown and not-yours, as with DELETE.
+  if (!findConnection(userId, id)) {
+    return NextResponse.json({ error: "no such connection" }, { status: 404 })
+  }
+
+  const remaining = validationCooldownRemaining(userId, id)
+  if (remaining > 0) {
+    markValidationAttempt(userId, id)
+    return NextResponse.json(
+      {
+        error: "validation was attempted too recently",
+        retryAfterMs: remaining,
+      },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(remaining / 1000)) } }
+    )
+  }
+
+  const opened = openConnection(userId, id)
+  if (!opened) {
+    // The record exists but will not open: a sealing mismatch or a rotated
+    // master key. Not the credential's fault, and not reported as rejection.
+    markValidationAttempt(userId, id)
+    return NextResponse.json({ error: "this connection could not be opened" }, { status: 500 })
+  }
+
+  const record = findConnection(userId, id)!
+  const validation = await validateCredentials(record.exchange, opened)
+  recordValidation(userId, id, validation)
+
+  audit.append({
+    correlationId,
+    stage: "exchange.credential",
+    outcome: validation.status === "valid" ? "ok" : "rejected",
+    userId,
+    summary: `exchange credential re-validated: ${validation.status}`,
+    detail: { exchange: record.exchange, connectionId: id, status: validation.status, reason: validation.reason },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    connection: describeConnection(findConnection(userId, id) ?? record),
+    correlationId,
+  })
 }
 
 export async function DELETE(req: NextRequest) {

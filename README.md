@@ -153,9 +153,52 @@ even by someone holding the master key.
 
 ```bash
 EXCHANGE_ENCRYPTION_KEY=...   # 32+ chars; no fallback, unset means 503
-npm run test:exchange-crypto  # 22 assertions, no server needed
-npm run test:exchange         # 27 assertions against a running server
+npm run test:exchange-crypto   # 22 assertions, no server needed
+npm run test:exchange-validate # 22 assertions, no server needed
+npm run test:exchange          # 44 assertions against a running server
 ```
+
+#### Credential validation
+
+`POST /api/exchanges` checks a credential against the exchange by signing a
+request to a **read-only balance endpoint** — enough to prove the key
+authenticates, without exercising a permission we do not want to use. Pass
+`validate: false` to skip it, `PUT /api/exchanges?id=` to re-check later (rate
+limited per connection, since each check is an outbound call and exchanges
+throttle by key), and `EXCHANGE_VALIDATION=off` to disable probing entirely
+where a deployment permits no egress.
+
+Four outcomes: `valid`, `rejected`, `unreachable`, `unsupported`. Two rules
+about them:
+
+- **A rejected credential is still stored.** The signing is ours, so if an
+  adapter were subtly wrong, discarding would destroy a working key on our
+  mistake. Visible rejection is recoverable both ways — retype or revoke.
+- **Nothing unexpected is ever `valid`.** An unparseable body, an HTML error
+  page, a timeout and a geo-block all classify as `unreachable`. A validator
+  that fails open is worse than none, because it launders an unchecked
+  credential as a checked one.
+
+Adapters exist only for **Kraken, OKX and KuCoin**, because only those signing
+schemes could be verified against the live API. These exchanges answer
+differently for an unknown key than for a bad signature, so a well-formed
+request bearing a key they have never seen is a real proof of correct signing —
+all three returned the *key* error, not the *signature* error:
+
+```
+Kraken  HTTP 200  {"error":["EAPI:Invalid key"]}                   (not Invalid signature)
+OKX     HTTP 401  {"code":"50111","msg":"Invalid OK-ACCESS-KEY"}   (not 50113)
+KuCoin  HTTP 401  {"code":"400003","msg":"The API key does not…"}  (not 400005)
+```
+
+Binance and Bybit have no adapter because that proof was unavailable: they
+answer `451` (restricted location) and `403` (CloudFront country block)
+respectively from this deployment. Coinbase has none because it has two
+incompatible key generations (legacy HMAC and CDP ES256) and a key does not say
+which. All three report `unsupported` rather than a guess, and the catalog
+carries the reason.
+
+Storing or validating a credential is still not permission to trade.
 
 Three deliberate properties: every verb needs a verified session (`requireUserId`,
 not the demo-fallback helper, so a live secret is never filed under a shared demo

@@ -50,6 +50,7 @@ export default function PrivateWalletPage() {
     hasPassphrase: boolean
     createdAt: number
     lastUsedAt: number | null
+    validation: { status: string; reason: string; checkedAt: number } | null
   }
   const [exchanges, setExchanges] = useState<ExchangeConnection[]>([])
   const [catalog, setCatalog] = useState<{ id: string; label: string; requiresPassphrase: boolean }[]>([])
@@ -165,6 +166,33 @@ export default function PrivateWalletPage() {
       setError("network error while storing the connection")
     } finally {
       setConnecting(false)
+    }
+  }
+
+  const handleRevalidate = async (id: string) => {
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/exchanges?id=${encodeURIComponent(id)}`, { method: "PUT" })
+      const body = await res.json().catch(() => ({}))
+      if (res.status === 401) {
+        router.replace("/private-wallet-login?next=/private-wallet")
+        return
+      }
+      if (res.status === 429) {
+        setError(
+          `Checked very recently — try again in ${Math.ceil((body?.retryAfterMs ?? 0) / 1000)}s. Each check calls the exchange.`
+        )
+        return
+      }
+      if (!res.ok) {
+        setError(body?.error ?? `could not re-check (${res.status})`)
+        return
+      }
+      setNotice(`Re-checked: ${body?.connection?.validation?.reason ?? "done"}`)
+      await loadConnections()
+    } catch {
+      setError("network error while re-checking the connection")
     }
   }
 
@@ -403,12 +431,21 @@ export default function PrivateWalletPage() {
                                   : " · not used yet"}
                               </div>
                             </div>
-                            <button
-                              onClick={() => void handleRevoke(exchange.id)}
-                              className="px-3 py-1 text-[10px] uppercase font-bold tracking-widest border border-slate-700 text-slate-400 hover:border-rose-500/50 hover:text-rose-300 transition"
-                            >
-                              Revoke
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <ValidationBadge validation={exchange.validation} />
+                              <button
+                                onClick={() => void handleRevalidate(exchange.id)}
+                                className="px-3 py-1 text-[10px] uppercase font-bold tracking-widest border border-slate-700 text-slate-400 hover:border-teal-500/50 hover:text-teal-300 transition"
+                              >
+                                Re-check
+                              </button>
+                              <button
+                                onClick={() => void handleRevoke(exchange.id)}
+                                className="px-3 py-1 text-[10px] uppercase font-bold tracking-widest border border-slate-700 text-slate-400 hover:border-rose-500/50 hover:text-rose-300 transition"
+                              >
+                                Revoke
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -557,5 +594,46 @@ export default function PrivateWalletPage() {
         </section>
       </main>
     </div>
+  )
+}
+
+/**
+ * What the exchange said about this credential, if anyone has asked.
+ *
+ * "Rejected" deliberately does not mean the credential was thrown away — it is
+ * still stored and revocable, because the signing is ours and a bug in it must
+ * not cost someone a working key.
+ */
+function ValidationBadge({
+  validation,
+}: {
+  validation: { status: string; reason: string; checkedAt: number } | null
+}) {
+  if (!validation) {
+    return (
+      <span
+        title="Never checked against the exchange"
+        className="px-2 py-0.5 border border-slate-700 text-slate-500 text-[9px] uppercase"
+      >
+        unchecked
+      </span>
+    )
+  }
+  const [cls, label] =
+    validation.status === "valid"
+      ? ["border-lime-500/40 text-lime-300", "verified"]
+      : validation.status === "rejected"
+      ? ["border-rose-500/40 text-rose-300", "rejected"]
+      : validation.status === "unreachable"
+      ? ["border-amber-500/40 text-amber-300", "unreachable"]
+      : ["border-slate-700 text-slate-500", "not checkable"]
+
+  return (
+    <span
+      title={`${validation.reason} — ${new Date(validation.checkedAt).toLocaleString()}`}
+      className={`px-2 py-0.5 border text-[9px] uppercase ${cls}`}
+    >
+      {label}
+    </span>
   )
 }

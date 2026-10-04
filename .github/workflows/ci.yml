@@ -64,6 +64,12 @@ jobs:
       - name: Exchange credential sealing (unit)
         run: pnpm test:exchange-crypto
 
+      # Also server-free: `fetch` is injected, so classification is checked
+      # against pinned real exchange responses rather than a live network — the
+      # runner cannot reach every exchange anyway.
+      - name: Exchange credential validation (unit)
+        run: pnpm test:exchange-validate
+
       - name: Build
         run: pnpm build
 
