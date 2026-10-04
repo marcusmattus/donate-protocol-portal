@@ -9,11 +9,12 @@ import {
   findConnection,
   listConnections,
   markValidationAttempt,
+  openConnection,
   recordValidation,
   revokeConnection,
+  storageBackend,
   validationCooldownRemaining,
 } from "@/lib/exchanges/store"
-import { openConnection } from "@/lib/exchanges/store"
 import { isValidationEnabled, validateCredentials } from "@/lib/exchanges/validate"
 import * as audit from "@/lib/pipeline/audit"
 
@@ -49,6 +50,13 @@ import * as audit from "@/lib/pipeline/audit"
  *   - **Validation never gates storage on reachability.** An exchange being down
  *     or geo-blocking the server says nothing about the credential, so that is
  *     `unreachable`, the credential is kept, and the user can re-check later.
+ *
+ * ## Storage
+ *
+ * The store is backed by the `exchange_connections` table when `DATABASE_URL`
+ * is set, and by an in-process map when it is not. GET reports which, as
+ * `storage`, because the difference is visible to the user: one survives a
+ * restart and the other does not. Nothing else in this file knows or cares.
  */
 
 /** Bounds on submitted values, so a huge body cannot be parked in memory. */
@@ -72,11 +80,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "sign in to manage exchange connections" }, { status: 401 })
   }
 
+  const connections = await listConnections(userId)
+
   return NextResponse.json({
-    connections: listConnections(userId).map(describeConnection),
+    connections: connections.map(describeConnection),
     // So the UI can explain an unavailable feature instead of failing on submit.
     sealingConfigured: isSealingConfigured(),
     validationEnabled: isValidationEnabled(),
+    // "database" survives a restart; "memory" does not. Said out loud so the
+    // UI can warn rather than letting a user assume durability it has not got.
+    storage: await storageBackend(),
     exchanges: EXCHANGES,
   })
 }
@@ -130,7 +143,7 @@ export async function POST(req: NextRequest) {
   const label = typeof input.label === "string" ? requireString(input.label, 1) ?? undefined : undefined
 
   try {
-    const record = createConnection({
+    const record = await createConnection({
       userId,
       exchange: descriptor.id,
       label,
@@ -143,10 +156,10 @@ export async function POST(req: NextRequest) {
     // path, so a sealing/opening mismatch surfaces here rather than the first
     // time something needs the credential for real.
     if (input.validate !== false) {
-      const opened = openConnection(userId, record.id)
+      const opened = await openConnection(userId, record.id)
       if (opened) {
         const validation = await validateCredentials(descriptor.id, opened)
-        recordValidation(userId, record.id, validation)
+        await recordValidation(userId, record.id, validation)
         audit.append({
           correlationId,
           stage: "exchange.credential",
@@ -178,7 +191,7 @@ export async function POST(req: NextRequest) {
       {
         ok: true,
         // Re-describe after validation so the body carries the outcome.
-        connection: describeConnection(findConnection(userId, record.id) ?? record),
+        connection: describeConnection((await findConnection(userId, record.id)) ?? record),
         correlationId,
       },
       { status: 201 }
@@ -213,13 +226,13 @@ export async function PUT(req: NextRequest) {
   if (!id) return badRequest("id is required")
 
   // Same 404 for unknown and not-yours, as with DELETE.
-  if (!findConnection(userId, id)) {
+  if (!(await findConnection(userId, id))) {
     return NextResponse.json({ error: "no such connection" }, { status: 404 })
   }
 
-  const remaining = validationCooldownRemaining(userId, id)
+  const remaining = await validationCooldownRemaining(userId, id)
   if (remaining > 0) {
-    markValidationAttempt(userId, id)
+    await markValidationAttempt(userId, id)
     return NextResponse.json(
       {
         error: "validation was attempted too recently",
@@ -229,17 +242,17 @@ export async function PUT(req: NextRequest) {
     )
   }
 
-  const opened = openConnection(userId, id)
+  const opened = await openConnection(userId, id)
   if (!opened) {
     // The record exists but will not open: a sealing mismatch or a rotated
     // master key. Not the credential's fault, and not reported as rejection.
-    markValidationAttempt(userId, id)
+    await markValidationAttempt(userId, id)
     return NextResponse.json({ error: "this connection could not be opened" }, { status: 500 })
   }
 
-  const record = findConnection(userId, id)!
+  const record = (await findConnection(userId, id))!
   const validation = await validateCredentials(record.exchange, opened)
-  recordValidation(userId, id, validation)
+  await recordValidation(userId, id, validation)
 
   audit.append({
     correlationId,
@@ -252,7 +265,7 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    connection: describeConnection(findConnection(userId, id) ?? record),
+    connection: describeConnection((await findConnection(userId, id)) ?? record),
     correlationId,
   })
 }
@@ -266,7 +279,7 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id")
   if (!id) return badRequest("id is required")
 
-  const revoked = revokeConnection(userId, id)
+  const revoked = await revokeConnection(userId, id)
   if (!revoked) {
     // Unknown and not-yours are the same answer, so this cannot be used to
     // discover another user's connection ids.

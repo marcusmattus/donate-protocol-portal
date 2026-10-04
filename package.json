@@ -17,10 +17,17 @@
     "test:webhook": "curl -X POST http://localhost:3000/api/webhooks/tradingview -H 'Content-Type: application/json' -H \"x-webhook-token: ${WEBHOOK_TOKEN:-demo123}\" -d '{\"symbol\":\"SOLUSDT\",\"side\":\"BUY\",\"price\":\"181.20\",\"strategy\":\"momentum-alpha\"}'",
     "test:exchange": "node exchange-security-test.js",
     "test:exchange-crypto": "node --experimental-strip-types exchange-crypto-test.ts",
-    "test:exchange-validate": "node --experimental-strip-types exchange-validate-test.ts"
+    "test:exchange-validate": "node --experimental-strip-types exchange-validate-test.ts",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "test:exchange-store": "node --experimental-strip-types --import ./scripts/node-alias-hook.mjs exchange-store-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "^7.8.0",
     "@privy-io/react-auth": "^3.26.0",
     "@radix-ui/react-accordion": "1.2.12",
@@ -89,6 +96,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8.5.15",
+    "prisma": "7.8.0",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3"

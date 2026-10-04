@@ -16,19 +16,38 @@ jobs:
   suites:
     name: build + security suites
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+
+    # Exchange connections have a Prisma backend now (prisma/schema.prisma), and
+    # it is the one that runs in production, so CI gets a real Postgres to run
+    # it against. Without this the table half of the store suite would skip and
+    # the backend that matters would be covered by nothing.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: donate_protocol_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
-      # All four suites are integration tests: they drive a running server over
-      # HTTP rather than importing modules, so the server and the test process
-      # have to agree on these. Setting them at job level is what makes that
-      # true by construction.
+      # All four HTTP suites are integration tests: they drive a running server
+      # rather than importing modules, so the server and the test process have
+      # to agree on these. Setting them at job level is what makes that true by
+      # construction.
       #
-      # Neither value is a secret. The alert token only authenticates the
-      # TradingView webhook on a throwaway server that exists for this job, and
-      # the session key only signs cookies this job mints and discards. Real
-      # deployments set TRADINGVIEW_ALERT_TOKENS and SESSION_SECRET to their own
-      # values; a CI literal must never be one of them.
+      # None is a secret. The alert token only authenticates the TradingView
+      # webhook on a throwaway server that exists for this job, and the session
+      # key only signs cookies this job mints and discards. Real deployments set
+      # TRADINGVIEW_ALERT_TOKENS and SESSION_SECRET to their own values; a CI
+      # literal must never be one of them.
       TRADINGVIEW_ALERT_TOKENS: ci-alert-token
       SESSION_SECRET: ci-session-key-not-used-outside-ci-0123456789
       # Seals only the exchange credentials this job creates and throws away, so
@@ -36,6 +55,12 @@ jobs:
       # A real deployment sets its own; this literal must never be one.
       EXCHANGE_ENCRYPTION_KEY: ci-exchange-sealing-key-not-used-outside-ci-0123456789
       BASE_URL: http://127.0.0.1:3000
+
+      # Deliberately *not* called DATABASE_URL. Named this way, the ordinary
+      # server below runs on the in-memory backend and the steps that want the
+      # table opt in by passing it — so both backends are exercised in one job
+      # instead of the memory one silently going untested.
+      CI_DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/donate_protocol_ci
 
       # NEXT_PUBLIC_PRIVY_APP_ID is deliberately left unset. The Privy suite
       # covers both server modes, and with no app ID configured the token
@@ -55,9 +80,15 @@ jobs:
           cache: pnpm
 
       # --frozen-lockfile so a lockfile that drifted from package.json fails
-      # here, loudly, instead of silently resolving something else.
+      # here, loudly, instead of silently resolving something else. The
+      # postinstall runs `prisma generate`, which needs no database.
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      # Fails if a committed migration does not apply to an empty database,
+      # which is the one thing a schema file cannot tell you on its own.
+      - name: Apply migrations
+        run: DATABASE_URL="$CI_DATABASE_URL" pnpm db:migrate
 
       # No server needed: this is the only place the sealing boundary's internals
       # are checked, so it runs before the slow steps.
@@ -69,6 +100,12 @@ jobs:
       # runner cannot reach every exchange anyway.
       - name: Exchange credential validation (unit)
         run: pnpm test:exchange-validate
+
+      # Runs the same invariants against the map and against the table, so the
+      # two backends cannot drift apart unnoticed. With DATABASE_URL unset the
+      # table half would skip, so it is passed here explicitly.
+      - name: Exchange connection store, both backends (unit)
+        run: DATABASE_URL="$CI_DATABASE_URL" pnpm test:exchange-store
 
       - name: Build
         run: pnpm build
@@ -102,6 +139,28 @@ jobs:
       - name: Exchange connection security regression
         run: pnpm test:exchange
 
+      # The same 44 assertions again, against a server whose connections live in
+      # Postgres. The route is backend-agnostic by design; this is what proves
+      # it, and it costs a second `next start` rather than a second build.
+      - name: Start a database-backed server
+        run: |
+          DATABASE_URL="$CI_DATABASE_URL" PORT=3001 \
+            pnpm start > "$RUNNER_TEMP/server-db.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server-db.pid"
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3001/api/charities; then
+              echo "database-backed server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "database-backed server did not become ready within 60s"
+          cat "$RUNNER_TEMP/server-db.log"
+          exit 1
+
+      - name: Exchange connection security regression (Postgres-backed)
+        run: BASE_URL=http://127.0.0.1:3001 pnpm test:exchange
+
       # Non-blocking: 3 of its 9 checks assert a response body shape that
       # /api/charities and /api/strategies have never returned, and that
       # predates CI. Kept visible so it turns green when those are fixed,
@@ -110,13 +169,22 @@ jobs:
         continue-on-error: true
         run: WEBHOOK_TOKEN="$TRADINGVIEW_ALERT_TOKENS" pnpm test:demo
 
-      - name: Server log
+      - name: Server logs
         if: failure()
-        run: cat "$RUNNER_TEMP/server.log"
+        run: |
+          for log in server server-db; do
+            if [ -f "$RUNNER_TEMP/$log.log" ]; then
+              echo "::group::$log.log"
+              cat "$RUNNER_TEMP/$log.log"
+              echo "::endgroup::"
+            fi
+          done
 
-      - name: Stop the server
+      - name: Stop the servers
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/server.pid" ]; then
-            kill "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null || true
-          fi
+          for pid in server server-db; do
+            if [ -f "$RUNNER_TEMP/$pid.pid" ]; then
+              kill "$(cat "$RUNNER_TEMP/$pid.pid")" 2>/dev/null || true
+            fi
+          done
