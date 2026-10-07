@@ -1,0 +1,84 @@
+// Exchange connections, as a table.
+//
+// This mirrors `ExchangeConnectionRecord` in lib/exchanges/store.ts, which is
+// the shape the application works with. The store maps between the two in
+// lib/exchanges/db.ts, and that mapper is the only place that knows both.
+//
+// ## What is stored, and what is not
+//
+// The three credential columns hold **ciphertext only** — the sealed envelopes
+// produced by lib/exchanges/crypto.ts, which are bound to the user, the
+// connection and the field they belong to. A dump of this table, or a replica
+// of it, discloses nothing without EXCHANGE_ENCRYPTION_KEY, and a row moved to
+// another user or another column will not open. There is deliberately no
+// column that could hold a plaintext key, secret or passphrase.
+//
+// `fingerprint` is an HMAC of the API key under the master key: enough to
+// recognise a key across rows, not enough to reconstruct one. `hint` is the
+// last four characters, which is what the UI shows.
+//
+// ## Prisma 7 notes
+//
+// The datasource carries no `url`: Prisma 7 moved connection strings out of
+// the schema and into prisma.config.ts for Migrate, and into the driver adapter
+// for the client. lib/exchanges/db.ts builds that adapter from DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ExchangeConnection {
+  /// `exc_` + 8 random bytes, minted by the store, not the database. The
+  /// application already needs the id before the row exists, because the id is
+  /// bound into each credential's sealing context.
+  id String @id
+
+  /// The Donate Protocol user. Every query in lib/exchanges/db.ts filters on
+  /// this as well as the id, so a route that forgets to check ownership still
+  /// cannot reach another user's row.
+  userId String @map("user_id")
+
+  exchange String
+  label    String
+
+  /// Sealed envelopes (`v1.<salt>.<iv>.<tag>.<ciphertext>`). Never plaintext.
+  sealedApiKey     String  @map("sealed_api_key")
+  sealedApiSecret  String  @map("sealed_api_secret")
+  sealedPassphrase String? @map("sealed_passphrase")
+
+  /// HMAC of the API key under the master key — recognisable, not reversible.
+  fingerprint String
+  /// Last four characters of the API key, for the UI.
+  hint String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// Set when the credential is revoked, at which point the three sealed
+  /// columns are emptied. A revoked row is kept as a record that the
+  /// connection existed; it can no longer be opened, because there is nothing
+  /// left to open.
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  /// Last time the sealed material was opened for use.
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+
+  /// Last validation outcome, flattened from `ValidationResult`. Null until the
+  /// credential has been checked against the exchange. `validationReason` is a
+  /// short fixed phrase chosen by lib/exchanges/validate.ts, never an
+  /// exchange's raw response, which can echo the submitted key back.
+  validationStatus    String?   @map("validation_status")
+  validationReason    String?   @map("validation_reason")
+  validationCheckedAt DateTime? @map("validation_checked_at") @db.Timestamptz(3)
+
+  /// When a validation was last *attempted*, successful or not, for the
+  /// cooldown that keeps this endpoint from being pointed at an exchange.
+  lastValidationAttemptAt DateTime? @map("last_validation_attempt_at") @db.Timestamptz(3)
+
+  /// The list query: one user's active connections, oldest first.
+  @@index([userId, revokedAt, createdAt])
+  @@map("exchange_connections")
+}

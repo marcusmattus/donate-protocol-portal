@@ -152,9 +152,10 @@ replayed as another user's record, or as a different field of the same record,
 even by someone holding the master key.
 
 ```bash
-EXCHANGE_ENCRYPTION_KEY=...   # 32+ chars; no fallback, unset means 503
+EXCHANGE_ENCRYPTION_KEY=...    # 32+ chars; no fallback, unset means 503
 npm run test:exchange-crypto   # 22 assertions, no server needed
 npm run test:exchange-validate # 22 assertions, no server needed
+npm run test:exchange-store    # 24 on the map, 53 with DATABASE_URL set
 npm run test:exchange          # 44 assertions against a running server
 ```
 
@@ -207,9 +208,41 @@ cannot be used to probe for other users' connections; and storing a credential
 is not permission to trade — nothing places an order, and execution would still
 pass the Risk Engine and the user's own policy.
 
-Connections are in-memory, like the other stores here, so they do not survive a
-restart. For credentials that fails safe, and the accessor surface is narrow so
-the Map can become a table without the sealing boundary moving.
+#### Where connections live
+
+With `DATABASE_URL` set, connections are rows in `exchange_connections`
+(`prisma/schema.prisma`) and survive a restart. Without it they live in a map in
+the server process and do not, which keeps the app runnable with no database at
+all. `GET /api/exchanges` reports which, as `storage`, because the difference is
+visible to the user.
+
+```bash
+DATABASE_URL=postgresql://…   # optional
+npm run db:migrate            # create the table
+```
+
+The table holds **ciphertext only**: the three credential columns are sealed
+envelopes bound to the user, the connection and the field, so a dump or a
+replica of it discloses nothing without `EXCHANGE_ENCRYPTION_KEY`, and a row
+moved to another user or another column will not open. There is no column that
+could hold a plaintext key. Revoking empties those columns rather than setting a
+flag — the row stays as a record that the connection existed, with nothing left
+in it to open.
+
+Two decisions worth knowing about:
+
+- **A configured database is required, not preferred.** If `DATABASE_URL` is set
+  and the database cannot be reached, or `prisma generate` never ran, requests
+  fail loudly. Falling back to memory would look like a user's stored
+  connections vanishing on a bad deploy while newly submitted credentials were
+  sealed into something the next restart throws away.
+- **The rules live above both backends.** Ownership, the per-user cap, the
+  validation cooldown and what a revoke destroys are implemented once, in
+  `lib/exchanges/store.ts`; the backends only find, insert, update and count. A
+  memory backend that drifts from the table is the obvious failure here, so
+  `exchange-store-test.ts` runs the *same* assertions against both and the run
+  is complete only when both pass. CI gives it a real Postgres, and also replays
+  all 44 HTTP assertions against a Postgres-backed server.
 
 The suite covers what matters: forged, unsigned, expired, wrong-audience and
 HS256-where-ES256-is-required tokens are all rejected and issue no cookie;
@@ -271,6 +304,11 @@ TradingView MCP → Market Intelligence → Strategy → Signal Normalizer
 | `lib/pipeline/execution-intent.ts` | the only object an exchange connector accepts |
 | `lib/pipeline/webhook-security.ts` | token, HMAC, timestamp window, replay suppression |
 | `lib/agent-tools/market-intelligence.ts` | the permissioned agent tools |
+| `lib/exchanges/crypto.ts` | the sealing boundary — HKDF + AES-256-GCM, context-bound |
+| `lib/exchanges/store.ts` | connection rules: ownership, cap, cooldown, revocation |
+| `lib/exchanges/db.ts` | the Prisma client, the one table, and row ⇄ record |
+| `lib/exchanges/validate.ts` | per-exchange signers for read-only balance probes |
+| `prisma/schema.prisma` | `exchange_connections`, ciphertext columns only |
 
 ### Setup
 
